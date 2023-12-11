@@ -17,13 +17,9 @@ create_cluster()
     # create cluster and wait for its creation
     $KIND create cluster --name "$CLUSTER_NAME" --config "$KIND_CONFIG"
 
-    # install clusterapi and exuma operators
+    # install clusterapi and mctest operators
     CLUSTER_TOPOLOGY=true $CLUSTERCTL init --infrastructure=docker --wait-providers &
-    $MAKE --directory member install &
-    # $MAKE --directory host/balancer install &
-    $MAKE --directory host/cluster-metrics install &
-    $MAKE --directory host/core install &
-    $MAKE --directory host/space-foundation install &
+    $MAKE --directory show install &
 
     wait $_init_pid
     reload_images &
