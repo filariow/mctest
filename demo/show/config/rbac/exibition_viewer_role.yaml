@@ -1,0 +1,27 @@
+# permissions for end users to view exibitions.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/instance: exibition-viewer-role
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: show
+    app.kubernetes.io/part-of: show
+    app.kubernetes.io/managed-by: kustomize
+  name: exibition-viewer-role
+rules:
+- apiGroups:
+  - demo.mctest.io
+  resources:
+  - exibitions
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - demo.mctest.io
+  resources:
+  - exibitions/status
+  verbs:
+  - get

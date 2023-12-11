@@ -1,0 +1,12 @@
+apiVersion: demo.mctest.io/v1alpha1
+kind: Exibition
+metadata:
+  labels:
+    app.kubernetes.io/name: exibition
+    app.kubernetes.io/instance: exibition-sample
+    app.kubernetes.io/part-of: show
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: show
+  name: exibition-sample
+spec:
+  # TODO(user): Add fields here

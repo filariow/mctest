@@ -1,0 +1,12 @@
+apiVersion: demo.mctest.io/v1alpha1
+kind: Performer
+metadata:
+  labels:
+    app.kubernetes.io/name: performer
+    app.kubernetes.io/instance: performer-sample
+    app.kubernetes.io/part-of: show
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: show
+  name: performer-sample
+spec:
+  # TODO(user): Add fields here

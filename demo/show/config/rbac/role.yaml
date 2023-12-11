@@ -1,0 +1,59 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  creationTimestamp: null
+  name: manager-role
+rules:
+- apiGroups:
+  - demo.mctest.io
+  resources:
+  - performers
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - demo.mctest.io
+  resources:
+  - performers/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - demo.mctest.io
+  resources:
+  - performers/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - demo.mctest.io
+  resources:
+  - shows
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - demo.mctest.io
+  resources:
+  - shows/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - demo.mctest.io
+  resources:
+  - shows/status
+  verbs:
+  - get
+  - patch
+  - update
