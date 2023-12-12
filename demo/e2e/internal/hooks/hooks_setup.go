@@ -42,12 +42,12 @@ func injectProvisioners(ctx context.Context, s *godog.Scenario) (context.Context
 		return ctx, err
 	}
 
-	hmm, err := k.ParseResources(context.TODO(), assets.DefaultClusterSpec)
+	hmm, err := k.ParseResources(ctx, assets.DefaultClusterSpec)
 	if err != nil {
 		return ctx, err
 	}
 
-	ns, err := einfra.ScenarioNamespaceFromContext(ctx)
+	ns, err := einfra.AuxiliaryScenarioNamespaceFromContext(ctx)
 	if err != nil {
 		return ctx, err
 	}
@@ -70,40 +70,48 @@ func injectProvisioners(ctx context.Context, s *godog.Scenario) (context.Context
 	return ctx, nil
 }
 
-// if scenario's tag contains @dedicated-host, this hook will provision a dedicated host cluster. Otherwise it will inject the management cluster as infra.
-func injectHostCluster(ctx context.Context, sc *godog.Scenario) (context.Context, error) {
-	// dedicated host not requested, inject management cluster as the host cluster
-	if !isDedicatedClusterRequired(sc) {
-		log.Printf("dedicated cluster not required")
-		cfg, err := kube.GetRESTConfig()
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		k, err := kube.New(cfg, scheme.DefaultSchemeHost, true)
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		h := infra.NewCluster(k)
-		return einfra.ClusterIntoContext(ctx, *h), nil
+// injects the configured cluster into context
+func injectCluster(ctx context.Context, sc *godog.Scenario) (context.Context, error) {
+	cfg, err := kube.GetRESTConfig()
+	if err != nil {
+		return ctx, err
 	}
 
-	log.Printf("dedicated cluster required, provisioning host cluster")
-	return provisionAndInjectHostCluster(ctx, sc)
+	k, err := kube.New(cfg, scheme.DefaultSchemeHost, true)
+	if err != nil {
+		return ctx, err
+	}
+
+	h := infra.NewCluster(k)
+	return einfra.ClusterIntoContext(ctx, *h), nil
 }
 
-func provisionAndInjectHostCluster(ctx context.Context, sc *godog.Scenario) (context.Context, error) {
+// if scenario's tag contains @dedicated-cluster, this hook will provision a dedicated cluster
+func injectDedicatedClusterIfRequired(ctx context.Context, sc *godog.Scenario) (context.Context, error) {
+	// dedicated host not requested, inject management cluster as the host cluster
+	if !isDedicatedClusterRequired(sc) {
+		log.Printf("dedicated cluster required, provisioning dedicated cluster")
+		return provisionAndInjectDedicatedCluster(ctx, sc)
+	}
+
+	log.Printf("dedicated cluster not required")
+	return ctx, nil
+
+}
+
+func provisionAndInjectDedicatedCluster(ctx context.Context, sc *godog.Scenario) (context.Context, error) {
+	// TODO: is this needed for this demo?
+
 	// retrieve provisioner
-	pn := defaultHostProvisioner
+	pn := defaultClusterProvisioner
 	// find tag with prefix matching the tagHostProvisionerPrefix
 	i := slices.IndexFunc(
 		sc.Tags,
 		func(e *messages.PickleTag) bool {
-			return strings.HasPrefix(e.Name, tagHostProvisionerPrefix)
+			return strings.HasPrefix(e.Name, tagClusterProvisionerPrefix)
 		})
 	if i != -1 {
-		pn = strings.TrimPrefix(sc.Tags[i].Name, tagHostProvisionerPrefix)
+		pn = strings.TrimPrefix(sc.Tags[i].Name, tagClusterProvisionerPrefix)
 	}
 
 	hostProvisioners, err := einfra.ProvisionersFromContext(ctx)
@@ -151,18 +159,14 @@ func provisionAndInjectHostCluster(ctx context.Context, sc *godog.Scenario) (con
 }
 
 func isDedicatedClusterRequired(s *godog.Scenario) bool {
-	tt := []string{}
-	for _, t := range s.Tags {
-		tt = append(tt, t.Name)
-	}
 	return slices.ContainsFunc(
 		s.Tags,
 		func(e *messages.PickleTag) bool {
-			return e.Name == TagDedicatedHost
+			return e.Name == TagDedicatedCluster
 		})
 }
 
-func prepareScenarioNamespaceInHost(ctx context.Context, sc *godog.Scenario) (context.Context, error) {
+func prepareScenarioNamespaces(ctx context.Context, sc *godog.Scenario) (context.Context, error) {
 	// get host cluster from context
 	h, err := einfra.ClusterFromContext(ctx)
 	if err != nil {
@@ -170,17 +174,17 @@ func prepareScenarioNamespaceInHost(ctx context.Context, sc *godog.Scenario) (co
 	}
 
 	// create the scenario namespace
-	n := corev1.Namespace{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:   fmt.Sprintf("test-%s-host", sc.Id),
-			Labels: map[string]string{"scope": "test"},
-		},
+	an, err := createAuxiliaryTestNamespace(ctx, h, sc.Id)
+	if err != nil {
+		return ctx, err
 	}
-	if _, err := h.Cli.CoreV1().Namespaces().Create(ctx, &n, metav1.CreateOptions{}); err != nil {
+	n, err := createTestNamespace(ctx, h, sc.Id)
+	if err != nil {
 		return ctx, err
 	}
 
 	// inject scenario namespace in context
+	ctx = einfra.AuxiliaryScenarioNamespaceIntoContext(ctx, an.Name)
 	ctx = einfra.ScenarioNamespaceIntoContext(ctx, n.Name)
 
 	// if the host is dedicated for this scenario, provide the admin client
@@ -197,6 +201,27 @@ func prepareScenarioNamespaceInHost(ctx context.Context, sc *godog.Scenario) (co
 	// update host cluster into context
 	nh := infra.NewCluster(nk)
 	return einfra.ClusterIntoContext(ctx, *nh), nil
+}
+
+func createTestNamespace(ctx context.Context, cluster *infra.Cluster, scenarioId string) (*corev1.Namespace, error) {
+	return createNamespace(ctx, cluster, "test", scenarioId)
+}
+
+func createAuxiliaryTestNamespace(ctx context.Context, cluster *infra.Cluster, scenarioId string) (*corev1.Namespace, error) {
+	return createNamespace(ctx, cluster, "test-aux", scenarioId)
+}
+
+func createNamespace(ctx context.Context, cluster *infra.Cluster, prefix, scenarioId string) (*corev1.Namespace, error) {
+	n := corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: fmt.Sprintf("%s-%s", prefix, scenarioId),
+			Labels: map[string]string{
+				"scope":    "test",
+				"scenario": scenarioId,
+			},
+		},
+	}
+	return cluster.Cli.CoreV1().Namespaces().Create(ctx, &n, metav1.CreateOptions{})
 }
 
 func prepareNamespacedClient(ctx context.Context, k *kube.Kubernetes, ns string) (*kube.Kubernetes, error) {

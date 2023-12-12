@@ -8,7 +8,10 @@ import (
 	"os"
 
 	"github.com/cucumber/godog"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/selection"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/filariow/mctest/demo/e2e/internal/infra"
 	"github.com/filariow/mctest/pkg/testrun"
@@ -62,15 +65,14 @@ func destroyHostResources(ctx context.Context, sc *godog.Scenario, err error) (c
 		return ctx, err
 	}
 
-	// fetch scenario namespace from context
-	n, err := infra.ScenarioNamespaceFromContext(ctx)
+	// delete test namespace from host
+	r, err := labels.NewRequirement("scenario", selection.Equals, []string{sc.Id})
 	if err != nil {
-		log.Printf("error destroying host resources: %s. Context: %v", err, ctx)
 		return ctx, err
 	}
-
-	// delete test namespace from host
-	if errDel := kh.Kubernetes.Cli.CoreV1().Namespaces().Delete(ctx, *n, metav1.DeleteOptions{}); errDel != nil {
+	s := labels.NewSelector().Add(*r)
+	deleteOpts := &client.DeleteAllOfOptions{ListOptions: client.ListOptions{LabelSelector: s}}
+	if errDel := kh.Kubernetes.CRCli.DeleteAllOf(ctx, &corev1.Namespace{}, deleteOpts); errDel != nil {
 		cerr := errors.Join(err, errDel)
 		log.Printf("error destroying host resources: %s", cerr)
 		return ctx, cerr

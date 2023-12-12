@@ -18,7 +18,7 @@ create_cluster()
     $KIND create cluster --name "$CLUSTER_NAME" --config "$KIND_CONFIG"
 
     # install clusterapi and mctest operators
-    CLUSTER_TOPOLOGY=true $CLUSTERCTL init --infrastructure=docker --wait-providers &
+    CLUSTER_TOPOLOGY=true $CLUSTERCTL init --infrastructure=docker --wait-providers  &
     $MAKE --directory show install &
 
     wait $_init_pid

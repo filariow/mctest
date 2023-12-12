@@ -190,19 +190,21 @@ func (k *Kubernetes) NamespacedResourcesAreCreated(ctx context.Context, spec str
 }
 
 func (k *Kubernetes) ResourcesAreCreatedInNamespace(ctx context.Context, namespace, spec string) error {
-	uu, err := k.ParseResources(ctx, spec)
-	if err != nil {
-		return err
-	}
-
-	for _, u := range uu {
-		u.SetNamespace(namespace)
-		if err := k.CreateNamespacedResourceUnstructured(ctx, u); err != nil {
+	return poll.Do(ctx, time.Second, func(ictx context.Context) error {
+		uu, err := k.ParseResources(ictx, spec)
+		if err != nil {
 			return err
 		}
-	}
 
-	return nil
+		for _, u := range uu {
+			u.SetNamespace(namespace)
+			if err := k.CreateNamespacedResourceUnstructured(ictx, u); err != nil {
+				return err
+			}
+		}
+
+		return nil
+	})
 }
 
 func (k *Kubernetes) ResourcesAreUpdated(ctx context.Context, spec string) error {

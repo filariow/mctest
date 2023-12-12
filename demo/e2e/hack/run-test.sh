@@ -1,6 +1,7 @@
 #!/bin/bash
 
 SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+TESTS_DIR=$(realpath "$SCRIPT_DIR/..")
 
 source "$SCRIPT_DIR/colors.sh"
 source "$SCRIPT_DIR/test-cluster-common.sh"
@@ -12,13 +13,13 @@ GODOG_TAGS=${GODOG_TAGS:-"--godog.tags=~disabled"}
 run_tests()
 {
     print_title "Running e2e tests"
-    td=$(realpath $SCRIPT_DIR/..)
     set -x
 
-    go -C "$td" test -v \
+    go -C "$TESTS_DIR" test -v \
         "$GODOG_TAGS" \
         --godog.concurrency "$GODOG_CONCURRENCY"
-    set +x
 }
 
-bash -c "${SCRIPT_DIR}/start-or-clean-kind.sh" && run_tests
+go -C "$TESTS_DIR" vet ./... && \
+    bash -c "${SCRIPT_DIR}/start-or-clean-kind.sh" && \
+    run_tests

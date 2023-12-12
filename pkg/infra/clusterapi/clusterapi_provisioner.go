@@ -25,10 +25,10 @@ var ErrClusterNotFound error = fmt.Errorf("error cluster not found")
 type ClusterAPIProvisioner struct {
 	Kubernetes *kube.Kubernetes
 	Manifests  []unstructured.Unstructured
-	Suffix     string
 
-	// TODO: maintain a list of provisioned resources,
-	// deletes them on unprovisioned
+	suffix     string
+	clusters   []unstructured.Unstructured
+	clusterDef []unstructured.Unstructured
 }
 
 func NewClusterAPIProvisioner(
@@ -36,28 +36,23 @@ func NewClusterAPIProvisioner(
 	manifests []unstructured.Unstructured,
 	suffix string,
 ) infra.ClusterProvisioner {
-	mm := make([]unstructured.Unstructured, len(manifests), len(manifests))
-	for i, m := range manifests {
-		l := m.DeepCopy()
-		l.SetName(fmt.Sprintf("%s-%s", m.GetName(), suffix))
-		mm[i] = *l
-	}
+	cc, mm := splitManifests(manifests, &suffix)
 
 	return &ClusterAPIProvisioner{
 		Kubernetes: kubernetes,
-		Manifests:  mm,
-		Suffix:     suffix,
+		Manifests:  manifests,
+
+		clusters:   cc,
+		clusterDef: mm,
+		suffix:     suffix,
 	}
 }
 
 // returns the kubeconfig for a given provisioned cluster
 func (p *ClusterAPIProvisioner) GetAllAdminKubeconfigs(ctx context.Context) (map[string]rest.Config, error) {
-	// create resources
-	cc, _ := p.manifests()
-
 	// fetch clusters rest.config
 	cfgs := map[string]rest.Config{}
-	for _, u := range cc {
+	for _, u := range p.clusters {
 		sn := fmt.Sprintf("%s-kubeconfig", u.GetName())
 		lctx, lcancel := context.WithTimeout(ctx, 1*time.Minute)
 		defer lcancel()
@@ -82,28 +77,22 @@ func (p *ClusterAPIProvisioner) GetAllAdminKubeconfigs(ctx context.Context) (map
 // Provision provisions the cluster api manifests for a new cluster
 // It will create Clusters as lasts.
 func (p *ClusterAPIProvisioner) Provision(ctx context.Context) error {
-	// create resources
-	cc, oo := p.manifests()
-
 	// create other resources
-	for _, u := range oo {
+	for _, u := range p.clusterDef {
 		if err := p.Kubernetes.CreateNamespacedResourceUnstructured(ctx, u); err != nil {
 			return fmt.Errorf("error creating namespaced ClusterAPI resource:%w\n%v", err, u)
 		}
 	}
 
 	// create clusters
-	for _, u := range cc {
-		n := fmt.Sprintf("%s-%s", u.GetName(), p.Suffix)
-		u.SetName(n)
-
+	for _, u := range p.clusters {
 		if err := p.Kubernetes.CreateNamespacedResourceUnstructured(ctx, u); err != nil {
 			return fmt.Errorf("error creating namespaced ClusterAPI Cluster resource:%w\n%v", err, u)
 		}
 	}
 
 	// wait for cluster status to be ready
-	for _, u := range cc {
+	for _, u := range p.clusters {
 		if err := p.Kubernetes.WatchForEventOnResourceUnstructured(ctx, u, func(e watch.Event) (bool, error) {
 			// convert to unstructured
 			m, err := runtime.DefaultUnstructuredConverter.ToUnstructured(e.Object)
@@ -144,19 +133,15 @@ func (p *ClusterAPIProvisioner) Provision(ctx context.Context) error {
 // Returns the number of cluster that will be created in a single execution of Provision.
 // It is needed for managing tunable-manifests provisioners, like the ClusterAPI one.
 func (p *ClusterAPIProvisioner) NumClustersProvisionedInProvisionRound() int {
-	cc, _ := p.manifests()
-	return len(cc)
+	return len(p.clusters)
 }
 
 // Unprovisions the clusters previously provisioned.
 // It will delete Clusters as firsts, the other CRs
 func (p *ClusterAPIProvisioner) Unprovision(ctx context.Context) error {
-	// find clusters
-	cc, oo := p.manifests()
-
 	// delete clusters before other to avoid deletion errors
 	tw := []unstructured.Unstructured{}
-	for _, c := range cc {
+	for _, c := range p.clusters {
 		err := p.Kubernetes.DeleteResourceUnstructured(ctx, c)
 		switch {
 		case err == nil:
@@ -179,7 +164,7 @@ func (p *ClusterAPIProvisioner) Unprovision(ctx context.Context) error {
 	}
 
 	// delete other resources
-	for _, u := range oo {
+	for _, u := range p.clusterDef {
 		if err := p.Kubernetes.DeleteResourceUnstructured(ctx, u); !kerrors.IsNotFound(err) {
 			return err
 		}
@@ -188,13 +173,17 @@ func (p *ClusterAPIProvisioner) Unprovision(ctx context.Context) error {
 }
 
 // auxiliaries
-func (p *ClusterAPIProvisioner) manifests() ([]unstructured.Unstructured, []unstructured.Unstructured) {
+func splitManifests(manifests []unstructured.Unstructured, clusterSuffix *string) ([]unstructured.Unstructured, []unstructured.Unstructured) {
 	cc, oo := []unstructured.Unstructured{}, []unstructured.Unstructured{}
-	for _, u := range p.Manifests {
+	for _, u := range manifests {
+		l := u.DeepCopy()
 		if u.GetKind() == clusterKind {
-			cc = append(cc, u)
+			if clusterSuffix != nil {
+				l.SetName(fmt.Sprintf("%s-%s", l.GetName(), *clusterSuffix))
+			}
+			cc = append(cc, *l)
 		} else {
-			oo = append(oo, u)
+			oo = append(oo, *l)
 		}
 	}
 	return cc, oo

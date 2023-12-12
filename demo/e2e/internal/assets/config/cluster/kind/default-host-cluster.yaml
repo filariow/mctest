@@ -1,7 +1,7 @@
 apiVersion: cluster.x-k8s.io/v1beta1
 kind: ClusterClass
 metadata:
-  name: host-default
+  name: default
   namespace: default
 spec:
   controlPlane:
@@ -9,16 +9,16 @@ spec:
       ref:
         apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
         kind: DockerMachineTemplate
-        name: host-default-control-plane
+        name: default-control-plane
     ref:
       apiVersion: controlplane.cluster.x-k8s.io/v1beta1
       kind: KubeadmControlPlaneTemplate
-      name: host-default-control-plane
+      name: default-control-plane
   infrastructure:
     ref:
       apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
       kind: DockerClusterTemplate
-      name: host-default-cluster
+      name: default-cluster
   patches:
   - definitions:
     - jsonPatches:
@@ -197,24 +197,24 @@ spec:
           ref:
             apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
             kind: KubeadmConfigTemplate
-            name: host-default-default-worker-bootstraptemplate
+            name: default-default-worker-bootstraptemplate
         infrastructure:
           ref:
             apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
             kind: DockerMachineTemplate
-            name: host-default-default-worker-machinetemplate
+            name: default-default-worker-machinetemplate
 ---
 apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
 kind: DockerClusterTemplate
 metadata:
-  name: host-default-cluster
+  name: default-cluster
   namespace: default
 spec: {}
 ---
 apiVersion: controlplane.cluster.x-k8s.io/v1beta1
 kind: KubeadmControlPlaneTemplate
 metadata:
-  name: host-default-control-plane
+  name: default-control-plane
   namespace: default
 spec:
   template:
@@ -229,7 +229,7 @@ spec:
             - host.docker.internal
           controllerManager:
             extraArgs:
-              enable-hostpath-provisioner: "true"
+              enablepath-provisioner: "true"
         initConfiguration:
           nodeRegistration: {}
         joinConfiguration:
@@ -238,7 +238,7 @@ spec:
 apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
 kind: DockerMachineTemplate
 metadata:
-  name: host-default-control-plane
+  name: default-control-plane
   namespace: default
 spec:
   template:
@@ -255,7 +255,7 @@ spec:
 apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
 kind: DockerMachineTemplate
 metadata:
-  name: host-default-default-worker-machinetemplate
+  name: default-default-worker-machinetemplate
   namespace: default
 spec:
   template:
@@ -267,7 +267,7 @@ spec:
 apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
 kind: KubeadmConfigTemplate
 metadata:
-  name: host-default-default-worker-bootstraptemplate
+  name: default-default-worker-bootstraptemplate
   namespace: default
 spec:
   template:
@@ -278,7 +278,7 @@ spec:
 apiVersion: cluster.x-k8s.io/v1beta1
 kind: Cluster
 metadata:
-  name: capi-host
+  name: capi
   namespace: default
 spec:
   clusterNetwork:
@@ -290,7 +290,7 @@ spec:
       cidrBlocks:
       - 10.128.0.0/12
   topology:
-    class: host-default
+    class: default
     controlPlane:
       metadata: {}
       replicas: 1

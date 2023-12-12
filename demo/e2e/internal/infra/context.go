@@ -13,7 +13,8 @@ const (
 	// clusters
 	keyCluster string = "cluster"
 	// namespaces
-	keyScenarioNamespace string = "scenario-namespace"
+	keyScenarioNamespace          string = "scenario-namespace"
+	keyAuxiliaryScenarioNamespace string = "auxiliary-scenario-namespace"
 )
 
 // provisioners
@@ -53,4 +54,16 @@ func ScenarioNamespaceFromContext(ctx context.Context) (*string, error) {
 
 func ScenarioNamespaceFromContextOrDie(ctx context.Context) string {
 	return econtext.FromContextOrDie[string](ctx, keyScenarioNamespace)
+}
+
+func AuxiliaryScenarioNamespaceIntoContext(ctx context.Context, value string) context.Context {
+	return econtext.IntoContext(ctx, keyAuxiliaryScenarioNamespace, value)
+}
+
+func AuxiliaryScenarioNamespaceFromContext(ctx context.Context) (*string, error) {
+	return econtext.FromContext[string](ctx, keyAuxiliaryScenarioNamespace)
+}
+
+func AuxiliaryScenarioNamespaceFromContextOrDie(ctx context.Context) string {
+	return econtext.FromContextOrDie[string](ctx, keyAuxiliaryScenarioNamespace)
 }

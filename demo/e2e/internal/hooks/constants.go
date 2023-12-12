@@ -1,8 +1,8 @@
 package hooks
 
 const (
-	TagDedicatedHost         = "dedicated-host"
-	tagHostProvisionerPrefix = "host-provisioner-"
+	TagDedicatedCluster         = "@dedicated-cluster"
+	tagClusterProvisionerPrefix = "cluster-provisioner-"
 
-	defaultHostProvisioner = "default"
+	defaultClusterProvisioner = "default"
 )

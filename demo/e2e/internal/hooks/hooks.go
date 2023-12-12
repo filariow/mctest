@@ -14,13 +14,16 @@ func injectHookSetup(ctx *godog.ScenarioContext) {
 	ctx.Before(hookPrepareScenarioTestFolder)
 
 	// handle dedicated host request
-	ctx.Before(injectHostCluster)
+	ctx.Before(injectCluster)
 
 	// set and create the ContextNamespace on Host Cluster
-	ctx.Before(prepareScenarioNamespaceInHost)
+	ctx.Before(prepareScenarioNamespaces)
 
 	// inject provisioners
 	ctx.Before(injectProvisioners)
+
+	// handle dedicated host request
+	ctx.Before(injectDedicatedClusterIfRequired)
 
 	// set timeout for single test
 	ctx.Before(setTimeout)
