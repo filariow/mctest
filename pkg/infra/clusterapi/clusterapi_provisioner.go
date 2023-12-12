@@ -1,4 +1,4 @@
-package cluster
+package clusterapi
 
 import (
 	"context"
@@ -23,19 +23,29 @@ const clusterKind string = "Cluster"
 var ErrClusterNotFound error = fmt.Errorf("error cluster not found")
 
 type ClusterAPIProvisioner struct {
-	Kubernetes kube.Kubernetes
+	Kubernetes *kube.Kubernetes
 	Manifests  []unstructured.Unstructured
-	Suffix     *string
+	Suffix     string
+
+	// TODO: maintain a list of provisioned resources,
+	// deletes them on unprovisioned
 }
 
 func NewClusterAPIProvisioner(
-	kubernetes kube.Kubernetes,
+	kubernetes *kube.Kubernetes,
 	manifests []unstructured.Unstructured,
-	suffix *string,
+	suffix string,
 ) infra.ClusterProvisioner {
+	mm := make([]unstructured.Unstructured, len(manifests), len(manifests))
+	for i, m := range manifests {
+		l := m.DeepCopy()
+		l.SetName(fmt.Sprintf("%s-%s", m.GetName(), suffix))
+		mm[i] = *l
+	}
+
 	return &ClusterAPIProvisioner{
 		Kubernetes: kubernetes,
-		Manifests:  manifests,
+		Manifests:  mm,
 		Suffix:     suffix,
 	}
 }
@@ -69,51 +79,9 @@ func (p *ClusterAPIProvisioner) GetAllAdminKubeconfigs(ctx context.Context) (map
 	return cfgs, nil
 }
 
-// returns the kubeconfigs for all provisioned clusters
-func (p *ClusterAPIProvisioner) GetAdminKubeconfig(ctx context.Context, cluster string) (*rest.Config, error) {
-	// create resources
-	cc, _ := p.manifests()
-
-	for _, u := range cc {
-		// needed to ensure a cluster provisioned with this provisioner is requested
-		if u.GetName() != cluster {
-			continue
-		}
-
-		sn := fmt.Sprintf("%s-kubeconfig", u.GetName())
-		lctx, lcancel := context.WithTimeout(ctx, 1*time.Minute)
-		defer lcancel()
-		cfg, err := poll.DoR(lctx, 10*time.Second, func(ctx context.Context) (*rest.Config, error) {
-			s, err := p.Kubernetes.Cli.CoreV1().Secrets(u.GetNamespace()).Get(ctx, sn, metav1.GetOptions{})
-			if err != nil {
-				return nil, err
-			}
-
-			// etract kubeconfig from secret and build rest.Config
-			return clientcmd.RESTConfigFromKubeConfig(s.Data["value"])
-		})
-		if err != nil {
-			return nil, err
-		}
-		return cfg, nil
-	}
-
-	return nil, fmt.Errorf("%w: %s", ErrClusterNotFound, cluster)
-
-}
-
 // Provision provisions the cluster api manifests for a new cluster
 // It will create Clusters as lasts.
 func (p *ClusterAPIProvisioner) Provision(ctx context.Context) error {
-	return p.provisionWithSuffix(ctx, nil)
-}
-
-// Provisions a cluster appending the given suffix to resources name
-func (p *ClusterAPIProvisioner) ProvisionWithSuffix(ctx context.Context, suffix string) error {
-	return p.provisionWithSuffix(ctx, &suffix)
-}
-
-func (p *ClusterAPIProvisioner) provisionWithSuffix(ctx context.Context, suffix *string) error {
 	// create resources
 	cc, oo := p.manifests()
 
@@ -126,10 +94,7 @@ func (p *ClusterAPIProvisioner) provisionWithSuffix(ctx context.Context, suffix 
 
 	// create clusters
 	for _, u := range cc {
-		n := fmt.Sprintf("%s-%s", u.GetName(), *p.Suffix)
-		if suffix != nil {
-			n += *suffix
-		}
+		n := fmt.Sprintf("%s-%s", u.GetName(), p.Suffix)
 		u.SetName(n)
 
 		if err := p.Kubernetes.CreateNamespacedResourceUnstructured(ctx, u); err != nil {
@@ -206,8 +171,8 @@ func (p *ClusterAPIProvisioner) Unprovision(ctx context.Context) error {
 
 	// TODO: enhance this, if deleted right before watching it will wait indefinitely
 	// wait for clusters deletion
+	// IDEA: use channels
 	for _, c := range tw {
-		c.SetName(fmt.Sprintf("%s-%s", c.GetName(), *p.Suffix))
 		if err := p.Kubernetes.WaitForDeletionOfResourceUnstructured(ctx, c); !kerrors.IsNotFound(err) {
 			return err
 		}

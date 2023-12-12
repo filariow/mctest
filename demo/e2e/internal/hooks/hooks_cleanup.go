@@ -31,7 +31,7 @@ func unprovisionMemberClusters(ctx context.Context, sc *godog.Scenario, err erro
 	}
 
 	// fetch all provisioners and unprovision
-	pp, err := infra.HostProvisionersFromContext(ctx)
+	pp, err := infra.ProvisionersFromContext(ctx)
 	if err != nil {
 		return ctx, err
 	}
@@ -57,13 +57,13 @@ func destroyHostResources(ctx context.Context, sc *godog.Scenario, err error) (c
 	}
 
 	// fetch host cluster from context
-	kh, err := infra.HostClusterFromContext(ctx)
+	kh, err := infra.ClusterFromContext(ctx)
 	if err != nil {
 		return ctx, err
 	}
 
 	// fetch scenario namespace from context
-	n, err := infra.HostScenarioNamespaceFromContext(ctx)
+	n, err := infra.ScenarioNamespaceFromContext(ctx)
 	if err != nil {
 		log.Printf("error destroying host resources: %s. Context: %v", err, ctx)
 		return ctx, err

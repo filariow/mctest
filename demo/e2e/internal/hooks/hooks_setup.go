@@ -24,8 +24,9 @@ import (
 	"github.com/filariow/mctest/demo/e2e/internal/assets"
 	einfra "github.com/filariow/mctest/demo/e2e/internal/infra"
 	"github.com/filariow/mctest/demo/e2e/internal/scheme"
-	"github.com/filariow/mctest/pkg/cluster"
+	econtext "github.com/filariow/mctest/pkg/context"
 	"github.com/filariow/mctest/pkg/infra"
+	"github.com/filariow/mctest/pkg/infra/clusterapi"
 	"github.com/filariow/mctest/pkg/kube"
 	"github.com/filariow/mctest/pkg/testrun"
 )
@@ -36,7 +37,7 @@ func setTimeout(ctx context.Context, _ *godog.Scenario) (context.Context, error)
 }
 
 func injectProvisioners(ctx context.Context, s *godog.Scenario) (context.Context, error) {
-	k, err := einfra.HostClusterFromContext(ctx)
+	k, err := einfra.ClusterFromContext(ctx)
 	if err != nil {
 		return ctx, err
 	}
@@ -46,7 +47,7 @@ func injectProvisioners(ctx context.Context, s *godog.Scenario) (context.Context
 		return ctx, err
 	}
 
-	ns, err := einfra.HostScenarioNamespaceFromContext(ctx)
+	ns, err := einfra.ScenarioNamespaceFromContext(ctx)
 	if err != nil {
 		return ctx, err
 	}
@@ -58,8 +59,13 @@ func injectProvisioners(ctx context.Context, s *godog.Scenario) (context.Context
 	}
 
 	hostProvisioners := map[string]infra.ClusterProvisioner{}
-	hostProvisioners["default"] = infra.NewClusterProvisioner(cluster.NewClusterAPIProvisioner(k.Kubernetes, scopedHostManifests, &s.Id))
-	ctx = einfra.HostProvisionersIntoContext(ctx, hostProvisioners)
+	dp := clusterapi.NewClusterAPIProvisioner(k.Kubernetes, scopedHostManifests, s.Id)
+	if n := dp.NumClustersProvisionedInProvisionRound(); n != 1 {
+		panic(fmt.Sprintf("host provider is expected to provision just 1 cluster, found %d", n))
+	}
+
+	hostProvisioners["default"] = dp
+	ctx = einfra.ProvisionersIntoContext(ctx, hostProvisioners)
 
 	return ctx, nil
 }
@@ -69,17 +75,18 @@ func injectHostCluster(ctx context.Context, sc *godog.Scenario) (context.Context
 	// dedicated host not requested, inject management cluster as the host cluster
 	if !isDedicatedClusterRequired(sc) {
 		log.Printf("dedicated cluster not required")
-		mk, ok := management.ManagementClusterFromContext(ctx)
-		if !ok {
-			return ctx, management.ErrManagementClusterNotFound
-		}
-
-		h, err := infra.NewHostCluster(mk.Cluster.Kubernetes)
+		cfg, err := kube.GetRESTConfig()
 		if err != nil {
-			return ctx, err
+			log.Fatal(err)
 		}
 
-		return infra.HostClusterIntoContext(ctx, h), nil
+		k, err := kube.New(cfg, scheme.DefaultSchemeHost, true)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		h := infra.NewCluster(k)
+		return einfra.ClusterIntoContext(ctx, *h), nil
 	}
 
 	log.Printf("dedicated cluster required, provisioning host cluster")
@@ -90,19 +97,25 @@ func provisionAndInjectHostCluster(ctx context.Context, sc *godog.Scenario) (con
 	// retrieve provisioner
 	pn := defaultHostProvisioner
 	// find tag with prefix matching the tagHostProvisionerPrefix
-	i := slices.IndexFunc(sc.Tags, func(e *messages.PickleTag) bool { return strings.HasPrefix(e.Name, tagHostProvisionerPrefix) })
+	i := slices.IndexFunc(
+		sc.Tags,
+		func(e *messages.PickleTag) bool {
+			return strings.HasPrefix(e.Name, tagHostProvisionerPrefix)
+		})
 	if i != -1 {
 		pn = strings.TrimPrefix(sc.Tags[i].Name, tagHostProvisionerPrefix)
 	}
 
-	hostProvisioners, ok := infra.HostProvisionersFromContext(ctx)
-	if !ok {
-		return ctx, infra.ErrHostProvisionersNotFound
+	hostProvisioners, err := einfra.ProvisionersFromContext(ctx)
+	if err != nil {
+		return ctx, econtext.ErrKeyNotFound
 	}
 
-	p, ok := hostProvisioners[pn]
+	p, ok := (*hostProvisioners)[pn]
 	if !ok {
-		return ctx, fmt.Errorf("%w: host provisioner %s for scenario %s not found", infra.ErrHostProvisionerNotFound, pn, sc.Name)
+		return ctx, fmt.Errorf(
+			"host provisioner %s for scenario %s not found in registered ones: %v",
+			pn, sc.Name, *hostProvisioners)
 	}
 
 	// provision host cluster
@@ -111,10 +124,17 @@ func provisionAndInjectHostCluster(ctx context.Context, sc *godog.Scenario) (con
 	}
 
 	// retrieve admin kubeconfig
-	cfg, err := p.GetAdminKubeconfig(ctx)
+	cfgs, err := p.GetAllAdminKubeconfigs(ctx)
 	if err != nil {
 		return ctx, err
 	}
+	cfg := func() *rest.Config {
+		for _, v := range cfgs {
+			return &v
+		}
+
+		panic("expected at least one kubeconfig from cluster provisioner, got none")
+	}()
 
 	// build kube.Kubernetes
 	k, err := kube.New(cfg, scheme.DefaultSchemeHost, true)
@@ -126,11 +146,8 @@ func provisionAndInjectHostCluster(ctx context.Context, sc *godog.Scenario) (con
 	// TODO: retry fetching config and building kube client if no connection available
 
 	// inject into context
-	h, err := infra.NewHostCluster(*k)
-	if err != nil {
-		return ctx, err
-	}
-	return infra.HostClusterIntoContext(ctx, h), err
+	h := infra.NewCluster(k)
+	return einfra.ClusterIntoContext(ctx, *h), err
 }
 
 func isDedicatedClusterRequired(s *godog.Scenario) bool {
@@ -138,48 +155,18 @@ func isDedicatedClusterRequired(s *godog.Scenario) bool {
 	for _, t := range s.Tags {
 		tt = append(tt, t.Name)
 	}
-	return slices.ContainsFunc(s.Tags, func(e *messages.PickleTag) bool { return e.Name == TagDedicatedHost })
-}
-
-func buildInjectManagementClusterKube(ctx context.Context, sc *godog.Scenario) (context.Context, error) {
-	cfg, err := kube.GetRESTConfig()
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	k, err := kube.New(cfg, scheme.DefaultSchemeHost, true)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	m := management.NewManagementCluster(*k)
-	return management.ManagementClusterIntoContext(ctx, m), nil
-}
-
-func prepareScenarioNamespaceInManagementCluster(ctx context.Context, sc *godog.Scenario) (context.Context, error) {
-	k, ok := management.ManagementClusterFromContext(ctx)
-	if !ok {
-		return ctx, management.ErrManagementClusterNotFound
-	}
-	n := fmt.Sprintf("test-%s-mgmt", sc.Id)
-	ctx = management.ManagementScenarioNamespaceIntoContext(ctx, n)
-
-	ns := corev1.Namespace{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:   n,
-			Labels: map[string]string{"scope": "test"},
-		},
-	}
-	_, err := k.Cli.CoreV1().Namespaces().Create(ctx, &ns, metav1.CreateOptions{})
-
-	return management.ManagementClusterIntoContext(ctx, k), err
+	return slices.ContainsFunc(
+		s.Tags,
+		func(e *messages.PickleTag) bool {
+			return e.Name == TagDedicatedHost
+		})
 }
 
 func prepareScenarioNamespaceInHost(ctx context.Context, sc *godog.Scenario) (context.Context, error) {
 	// get host cluster from context
-	h, ok := infra.HostClusterFromContext(ctx)
-	if !ok {
-		return ctx, infra.ErrHostClusterNotFound
+	h, err := einfra.ClusterFromContext(ctx)
+	if err != nil {
+		return ctx, err
 	}
 
 	// create the scenario namespace
@@ -189,13 +176,12 @@ func prepareScenarioNamespaceInHost(ctx context.Context, sc *godog.Scenario) (co
 			Labels: map[string]string{"scope": "test"},
 		},
 	}
-	_, err := h.Cli.CoreV1().Namespaces().Create(ctx, &n, metav1.CreateOptions{})
-	if err != nil {
+	if _, err := h.Cli.CoreV1().Namespaces().Create(ctx, &n, metav1.CreateOptions{}); err != nil {
 		return ctx, err
 	}
 
 	// inject scenario namespace in context
-	ctx = infra.HostScenarioNamespaceIntoContext(ctx, n.Name)
+	ctx = einfra.ScenarioNamespaceIntoContext(ctx, n.Name)
 
 	// if the host is dedicated for this scenario, provide the admin client
 	if h.IsDedicated {
@@ -203,20 +189,17 @@ func prepareScenarioNamespaceInHost(ctx context.Context, sc *godog.Scenario) (co
 	}
 
 	// otherwise build a namespaced client
-	nk, err := prepareNamespacedClient(ctx, h.Cluster.Kubernetes, n.Name)
+	nk, err := prepareNamespacedClient(ctx, h.Kubernetes, n.Name)
 	if err != nil {
 		return ctx, err
 	}
 
 	// update host cluster into context
-	nh, err := infra.NewHostCluster(*nk)
-	if err != nil {
-		return ctx, err
-	}
-	return infra.HostClusterIntoContext(ctx, nh), nil
+	nh := infra.NewCluster(nk)
+	return einfra.ClusterIntoContext(ctx, *nh), nil
 }
 
-func prepareNamespacedClient(ctx context.Context, k kube.Kubernetes, ns string) (*kube.Kubernetes, error) {
+func prepareNamespacedClient(ctx context.Context, k *kube.Kubernetes, ns string) (*kube.Kubernetes, error) {
 	var err error
 
 	// create service account

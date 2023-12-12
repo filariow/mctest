@@ -13,12 +13,6 @@ func injectHookSetup(ctx *godog.ScenarioContext) {
 	// create temp folder for scenario
 	ctx.Before(hookPrepareScenarioTestFolder)
 
-	// inject client for management cluster
-	ctx.Before(buildInjectManagementClusterKube)
-
-	// set and create the ContextNamespace on Management Cluster
-	ctx.Before(prepareScenarioNamespaceInManagementCluster)
-
 	// handle dedicated host request
 	ctx.Before(injectHostCluster)
 

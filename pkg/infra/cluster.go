@@ -12,20 +12,15 @@ import (
 	"github.com/filariow/mctest/pkg/testrun"
 )
 
-const (
-	proxyDir = "barraterre"
-)
-
 type Cluster struct {
-	kube.Kubernetes
+	*kube.Kubernetes
 }
 
-// proxy
-func (c *Cluster) DeployProxyInNamespace(ctx context.Context, namespace string) error {
-	return c.DeployOperatorInNamespace(ctx, proxyDir, namespace)
+func NewCluster(k *kube.Kubernetes) *Cluster {
+	return &Cluster{k}
 }
 
-// generic
+// operator
 func (c *Cluster) DeployOperatorInNamespace(ctx context.Context, opPath string, ns string) error {
 	tf, err := testrun.TestFolderFromContext(ctx)
 	if err != nil {

@@ -18,40 +18,40 @@ const (
 )
 
 // provisioners
-func HostProvisionersIntoContext(ctx context.Context, value map[string]pinfra.ClusterProvisioner) context.Context {
+func ProvisionersIntoContext(ctx context.Context, value map[string]pinfra.ClusterProvisioner) context.Context {
 	return econtext.IntoContext(ctx, keyHostProvisioners, value)
 }
 
-func HostProvisionersFromContext(ctx context.Context) (*map[string]pinfra.ClusterProvisioner, error) {
+func ProvisionersFromContext(ctx context.Context) (*map[string]pinfra.ClusterProvisioner, error) {
 	return econtext.FromContext[map[string]pinfra.ClusterProvisioner](ctx, keyHostProvisioners)
 }
 
-func HostProvisionersFromContextOrDie(ctx context.Context) map[string]pinfra.ClusterProvisioner {
+func ProvisionersFromContextOrDie(ctx context.Context) map[string]pinfra.ClusterProvisioner {
 	return econtext.FromContextOrDie[map[string]pinfra.ClusterProvisioner](ctx, keyHostProvisioners)
 }
 
 // kubes
-func HostClusterIntoContext(ctx context.Context, value Cluster) context.Context {
+func ClusterIntoContext(ctx context.Context, value pinfra.Cluster) context.Context {
 	return econtext.IntoContext(ctx, keyHostCluster, value)
 }
 
-func HostClusterFromContext(ctx context.Context) (*Cluster, error) {
-	return econtext.FromContext[Cluster](ctx, keyHostCluster)
+func ClusterFromContext(ctx context.Context) (*pinfra.Cluster, error) {
+	return econtext.FromContext[pinfra.Cluster](ctx, keyHostCluster)
 }
 
-func HostClusterFromContextOrDie(ctx context.Context) Cluster {
-	return econtext.FromContextOrDie[Cluster](ctx, keyHostCluster)
+func ClusterFromContextOrDie(ctx context.Context) pinfra.Cluster {
+	return econtext.FromContextOrDie[pinfra.Cluster](ctx, keyHostCluster)
 }
 
 // namespaces
-func HostScenarioNamespaceIntoContext(ctx context.Context, value string) context.Context {
+func ScenarioNamespaceIntoContext(ctx context.Context, value string) context.Context {
 	return econtext.IntoContext(ctx, keyHostScenarioNamespace, value)
 }
 
-func HostScenarioNamespaceFromContext(ctx context.Context) (*string, error) {
+func ScenarioNamespaceFromContext(ctx context.Context) (*string, error) {
 	return econtext.FromContext[string](ctx, keyHostScenarioNamespace)
 }
 
-func HostScenarioNamespaceFromContextOrDie(ctx context.Context) string {
+func ScenarioNamespaceFromContextOrDie(ctx context.Context) string {
 	return econtext.FromContextOrDie[string](ctx, keyHostScenarioNamespace)
 }

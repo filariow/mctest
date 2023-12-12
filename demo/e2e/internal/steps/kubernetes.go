@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/cucumber/godog"
-	"github.com/filariow/mctest/demo/e2e/internal/infra/host"
+	"github.com/filariow/mctest/demo/e2e/internal/infra"
 )
 
 func RegisterStepFuncsKubernetes(ctx *godog.ScenarioContext) {
@@ -28,8 +28,8 @@ func ResourcesExist(ctx context.Context, spec string) error {
 	lctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
 
-	hns := host.HostScenarioNamespaceFromContextOrDie(ctx)
-	return host.HostClusterFromContextOrDie(ctx).
+	hns := infra.ScenarioNamespaceFromContextOrDie(ctx)
+	return infra.ClusterFromContextOrDie(ctx).
 		ResourcesExistInNamespace(lctx, hns, spec)
 }
 
@@ -37,7 +37,7 @@ func ResourcesNotExist(ctx context.Context, spec string) error {
 	lctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
 
-	return host.HostClusterFromContextOrDie(lctx).
+	return infra.ClusterFromContextOrDie(lctx).
 		ResourcesNotExist(lctx, spec)
 }
 
@@ -45,7 +45,7 @@ func ResourcesAreUpdated(ctx context.Context, spec string) error {
 	lctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
 
-	return host.HostClusterFromContextOrDie(lctx).
+	return infra.ClusterFromContextOrDie(lctx).
 		ResourcesAreUpdated(lctx, spec)
 }
 
@@ -53,8 +53,8 @@ func ResourcesAreCreated(ctx context.Context, spec string) error {
 	lctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
 
-	hns := host.HostScenarioNamespaceFromContextOrDie(lctx)
-	return host.HostClusterFromContextOrDie(lctx).
+	hns := infra.ScenarioNamespaceFromContextOrDie(lctx)
+	return infra.ClusterFromContextOrDie(lctx).
 		ResourcesAreCreatedInNamespace(lctx, hns, spec)
 }
 
@@ -62,6 +62,6 @@ func CreateNamespace(ctx context.Context, namespace string) error {
 	lctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
 
-	return host.HostClusterFromContextOrDie(lctx).
+	return infra.ClusterFromContextOrDie(lctx).
 		CreateNamespace(lctx, namespace)
 }
