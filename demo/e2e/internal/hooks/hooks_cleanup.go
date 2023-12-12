@@ -24,7 +24,7 @@ func cancelRunContext(ctx context.Context, _ *godog.Scenario, err error) (contex
 	return ctx, err
 }
 
-func unprovisionMemberClusters(ctx context.Context, sc *godog.Scenario, err error) (context.Context, error) {
+func unprovisionClusters(ctx context.Context, sc *godog.Scenario, err error) (context.Context, error) {
 	// if an error occurred before, do not cleanup
 	if err != nil {
 		return ctx, err
@@ -44,7 +44,7 @@ func unprovisionMemberClusters(ctx context.Context, sc *godog.Scenario, err erro
 	}
 
 	if err := errors.Join(errs...); err != nil {
-		log.Printf("error unprovisioning member clusters: %v", err)
+		log.Printf("error unprovisioning clusters: %v", err)
 		return ctx, err
 	}
 	return ctx, nil

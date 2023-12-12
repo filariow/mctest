@@ -9,49 +9,48 @@ import (
 
 const (
 	// provisioners
-	keyHostProvisioners   string = "host-provisioners"
-	keyMemberProvisioners string = "member-provisioners"
+	keyProvisioners string = "provisioners"
 	// clusters
-	keyHostCluster string = "host-cluster"
+	keyCluster string = "cluster"
 	// namespaces
-	keyHostScenarioNamespace string = "scenario-namespace-host"
+	keyScenarioNamespace string = "scenario-namespace"
 )
 
 // provisioners
 func ProvisionersIntoContext(ctx context.Context, value map[string]pinfra.ClusterProvisioner) context.Context {
-	return econtext.IntoContext(ctx, keyHostProvisioners, value)
+	return econtext.IntoContext(ctx, keyProvisioners, value)
 }
 
 func ProvisionersFromContext(ctx context.Context) (*map[string]pinfra.ClusterProvisioner, error) {
-	return econtext.FromContext[map[string]pinfra.ClusterProvisioner](ctx, keyHostProvisioners)
+	return econtext.FromContext[map[string]pinfra.ClusterProvisioner](ctx, keyProvisioners)
 }
 
 func ProvisionersFromContextOrDie(ctx context.Context) map[string]pinfra.ClusterProvisioner {
-	return econtext.FromContextOrDie[map[string]pinfra.ClusterProvisioner](ctx, keyHostProvisioners)
+	return econtext.FromContextOrDie[map[string]pinfra.ClusterProvisioner](ctx, keyProvisioners)
 }
 
 // kubes
 func ClusterIntoContext(ctx context.Context, value pinfra.Cluster) context.Context {
-	return econtext.IntoContext(ctx, keyHostCluster, value)
+	return econtext.IntoContext(ctx, keyCluster, value)
 }
 
 func ClusterFromContext(ctx context.Context) (*pinfra.Cluster, error) {
-	return econtext.FromContext[pinfra.Cluster](ctx, keyHostCluster)
+	return econtext.FromContext[pinfra.Cluster](ctx, keyCluster)
 }
 
 func ClusterFromContextOrDie(ctx context.Context) pinfra.Cluster {
-	return econtext.FromContextOrDie[pinfra.Cluster](ctx, keyHostCluster)
+	return econtext.FromContextOrDie[pinfra.Cluster](ctx, keyCluster)
 }
 
 // namespaces
 func ScenarioNamespaceIntoContext(ctx context.Context, value string) context.Context {
-	return econtext.IntoContext(ctx, keyHostScenarioNamespace, value)
+	return econtext.IntoContext(ctx, keyScenarioNamespace, value)
 }
 
 func ScenarioNamespaceFromContext(ctx context.Context) (*string, error) {
-	return econtext.FromContext[string](ctx, keyHostScenarioNamespace)
+	return econtext.FromContext[string](ctx, keyScenarioNamespace)
 }
 
 func ScenarioNamespaceFromContextOrDie(ctx context.Context) string {
-	return econtext.FromContextOrDie[string](ctx, keyHostScenarioNamespace)
+	return econtext.FromContextOrDie[string](ctx, keyScenarioNamespace)
 }

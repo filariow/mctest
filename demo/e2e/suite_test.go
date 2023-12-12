@@ -5,6 +5,7 @@ import (
 	_ "embed"
 	"log"
 	"os"
+	"path"
 	"testing"
 
 	"github.com/cucumber/godog"
@@ -43,7 +44,10 @@ func TestMain(m *testing.M) {
 	opts.Paths = pflag.Args()
 
 	// prepare .tmp folder in root folder and change directory to it
-	tf, err := testrun.PrepareAndChdirIntoDotTmpTestsFolder("..")
+	tf, err := testrun.PrepareAndChdirIntoDotTmpTestsFolder(
+		path.Join("..", ".."), // rootPath
+		"demo",                // path to .tmp relative to rootPath
+	)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -61,11 +65,8 @@ func TestMain(m *testing.M) {
 			log.Fatalf("tests completed successfully, but an error occurred cleaning the .tmp folder %s: %v", *tf, err)
 		}
 
-	//	2 - command line usage error
-	case 2:
-		os.Exit(0)
-
 	//	1 - failed
+	//	2 - command line usage error
 	// 128 - or higher, os signal related error exit codes
 	default:
 		log.Fatalf("non-zero status returned (%d), failed to run feature tests", sc)

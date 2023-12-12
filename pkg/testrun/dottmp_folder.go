@@ -2,16 +2,17 @@ package testrun
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"path"
 
 	cp "github.com/otiai10/copy"
 )
 
-func PrepareAndChdirIntoDotTmpTestsFolder(basePath string) (*string, error) {
-	d, err := PrepareDotTmpTestsFolder(basePath)
+func PrepareAndChdirIntoDotTmpTestsFolder(rootPath, tmpParentRootRelativePath string, copyOverFolders ...string) (*string, error) {
+	d, err := PrepareDotTmpTestsFolder(rootPath, tmpParentRootRelativePath, copyOverFolders...)
 	if err != nil {
-		return nil, fmt.Errorf("error preparing .tmp folder at %s: %w", basePath, err)
+		return nil, fmt.Errorf("error preparing .tmp folder at %s: %w", path.Join(rootPath, tmpParentRootRelativePath), err)
 	}
 
 	// move to .tmp folder
@@ -21,56 +22,50 @@ func PrepareAndChdirIntoDotTmpTestsFolder(basePath string) (*string, error) {
 	return d, nil
 }
 
-func PrepareDotTmpTestsFolder(basePath string) (*string, error) {
-	d := path.Join(basePath, ".tmp", "tests" /*, fmt.Sprintf("%d", time.Now().UTC().Unix())*/)
-
+func PrepareDotTmpTestsFolder(rootPath, tmpParentRootRelativePath string, copyOverFolders ...string) (*string, error) {
+	d := path.Join(rootPath, tmpParentRootRelativePath, ".tmp", "tests" /*, fmt.Sprintf("%d", time.Now().UTC().Unix())*/)
+	wd, _ := os.Getwd()
+	log.Printf("tests folder is %v", path.Join(wd, d))
 	opts := cp.Options{
-		AddPermission: 0600,
+		AddPermission: 0666,
 		OnDirExists: func(src, dest string) cp.DirExistsAction {
 			return cp.Replace
 		},
 		PreserveOwner: true,
 	}
 
-	copyOverFunc := func(srcContext, destContext string, folder ...string) func() error {
-		f := path.Join(folder...)
-		return func() error {
-			return cp.Copy(
-				path.Join(srcContext, f),
-				path.Join(destContext, f),
-				opts)
-		}
-	}
+	// copyOverFunc := func(srcContext, destContext string, folder string) error {
+	// 	return cp.Copy(
+	// 		path.Join(srcContext, folder),
+	// 		path.Join(destContext, folder),
+	// 		opts)
+	// }
 
-	removeDirFunc := func(path string) func() error {
-		return func() error {
-			if err := os.RemoveAll(path); !os.IsNotExist(err) {
-				return err
-			}
-			return nil
+	removeDirFunc := func(path string) error {
+		if err := os.RemoveAll(path); !os.IsNotExist(err) {
+			return err
 		}
+		return nil
 	}
 
 	baseFolder := path.Join(d, "base")
 	preFolder := path.Join(d, "pre")
-	todos := []func() error{
-		removeDirFunc(baseFolder),
-		func() error {
-			if err := os.MkdirAll(path.Join(preFolder, "base"), 0755); !os.IsExist(err) {
-				return err
-			}
-			return nil
-		},
-		copyOverFunc(path.Join(d, "pre"), d, "base"),
-		removeDirFunc(preFolder),
-		copyOverFunc("..", baseFolder, "member"),
-		copyOverFunc("..", baseFolder, "host", "core"),
+
+	// move .tmp/pre to .tmp/base
+	if err := removeDirFunc(baseFolder); err != nil {
+		return nil, err
 	}
-	for _, f := range todos {
-		if err := f(); err != nil {
-			return nil, err
-		}
+	if err := cp.Copy(preFolder, baseFolder, opts); err != nil {
+		return nil, err
 	}
+
+	// for _, f := range copyOverFolders {
+	// 	srcCtx := filepath.Dir(f)
+	// 	fn := filepath.Base(f)
+	// 	if err := copyOverFunc(path.Join(rootPath, srcCtx), baseFolder, fn); err != nil {
+	// 		return nil, err
+	// 	}
+	// }
 
 	return &d, nil
 }

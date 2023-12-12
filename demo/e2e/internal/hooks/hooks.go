@@ -27,8 +27,8 @@ func injectHookSetup(ctx *godog.ScenarioContext) {
 }
 
 func injectHookCleanup(ctx *godog.ScenarioContext) {
-	// unprovision member clusters
-	ctx.After(unprovisionMemberClusters)
+	// unprovision clusters
+	ctx.After(unprovisionClusters)
 
 	// delete the ContextNamespace if no errors occurred
 	ctx.After(destroyHostResources)

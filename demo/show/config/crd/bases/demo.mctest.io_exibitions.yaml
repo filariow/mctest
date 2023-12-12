@@ -35,10 +35,13 @@ spec:
           spec:
             description: ExibitionSpec defines the desired state of Exibition
             properties:
-              foo:
-                description: Foo is an example field of Exibition. Edit exibition_types.go
-                  to remove/update
+              performers:
                 type: string
+              show:
+                type: string
+            required:
+            - performers
+            - show
             type: object
           status:
             description: ExibitionStatus defines the observed state of Exibition
