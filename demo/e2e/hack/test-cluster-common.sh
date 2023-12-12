@@ -15,6 +15,9 @@ TMP_PREBASE_FOLDER="$TMP_FOLDER/tests/pre"
 
 prepare_prebase_folder()
 {
+    chmod -R 0755 "$TMP_FOLDER" || true
+    rm -rf "$TMP_FOLDER" || true
+
     # create base folders
     mkdir -p "$TMP_FOLDER" "$TMP_PREBASE_FOLDER/config/default" || return 1
 
@@ -25,9 +28,7 @@ prepare_prebase_folder()
         --chmod=0755 \
         --chown="$(id -u):$(id -g)" \
         demo/e2e demo/show \
-        "$TMP_PREBASE_FOLDER/demo" && \
-        chattr -R -i "$TMP_FOLDER" && \
-            $MAKE --directory "$TMP_PREBASE_FOLDER/demo/show" kustomize manifests generate; } || return 1
+        "$TMP_PREBASE_FOLDER/demo"; } || return 1
 
     # build default manifests
     ( cd "$TMP_PREBASE_FOLDER/demo/show/config" && \
@@ -36,6 +37,8 @@ prepare_prebase_folder()
             ../../bin/kustomize build . > "$TMP_PREBASE_FOLDER/config/default/show.yaml" \
         ) && ( cd "rbac" && \
             ../../bin/kustomize build . > "$TMP_PREBASE_FOLDER/config/default/show-rbac.yaml" ) )
+
+    chmod -R 0755 "$TMP_FOLDER" || true
 }
 
 build_images()
@@ -47,13 +50,15 @@ init()
 {
     # prepare, test base folder and build images
     print_section "preparing manifests and images"
-    chattr -R -i "$TMP_FOLDER"
-    rm -rf "$TMP_FOLDER" || true
     { \
         $MAKE --directory demo/show kustomize generate manifests && \
             prepare_prebase_folder && \
             build_images; \
-    } || { print_error "error initializing preparing base folder and/or building images"; exit 1; }
+    } || { \
+        print_error "error initializing preparing base folder and/or building images"; \
+        chmod -R 0755 "$TMP_FOLDER" || true ; \
+        exit 1; \
+    }
 }
 
 reload_images()

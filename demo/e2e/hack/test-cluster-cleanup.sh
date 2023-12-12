@@ -7,18 +7,20 @@ SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 source "$SCRIPT_DIR/colors.sh"
 source "$SCRIPT_DIR/test-cluster-common.sh"
 
-try_cleanup()
+init_and_reload()
 {
-    local _init_pid
-    init &
-    _init_pid=$!
+    init && reload_images
+}
 
+clean_cluster()
+{
     print_section "cleaning up management cluster"
+
     # store admin kubeconfig to management cluster in a temp file
     local kf
     kf=$(mktemp)
 
-    $KIND get kubeconfig --name "$CLUSTER_NAME" > "$kf" || exit 1
+    $KIND get kubeconfig --name "$CLUSTER_NAME" > "$kf" ||  exit 1
 
     # delete all clusters
     $KUBECTL delete "clusters.cluster.x-k8s.io" --all --all-namespaces --wait --kubeconfig "$kf" --ignore-not-found=true || \
@@ -36,8 +38,13 @@ try_cleanup()
     $KUBECTL delete namespaces --wait -l scope=test --kubeconfig "$kf" --ignore-not-found=true || \
         { print_error "error deleting namespaces" && exit 1; } &
 
-    wait $_init_pid
-    reload_images &
+    wait
+}
+
+try_cleanup()
+{
+    init_and_reload &
+    clean_cluster &
 
     wait
 }

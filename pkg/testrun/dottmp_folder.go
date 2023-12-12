@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"path"
+	"path/filepath"
 
 	cp "github.com/otiai10/copy"
 )
@@ -34,12 +35,12 @@ func PrepareDotTmpTestsFolder(rootPath, tmpParentRootRelativePath string, copyOv
 		PreserveOwner: true,
 	}
 
-	// copyOverFunc := func(srcContext, destContext string, folder string) error {
-	// 	return cp.Copy(
-	// 		path.Join(srcContext, folder),
-	// 		path.Join(destContext, folder),
-	// 		opts)
-	// }
+	copyOverFunc := func(srcContext, destContext string, folder string) error {
+		return cp.Copy(
+			path.Join(srcContext, folder),
+			path.Join(destContext, folder),
+			opts)
+	}
 
 	removeDirFunc := func(path string) error {
 		if err := os.RemoveAll(path); !os.IsNotExist(err) {
@@ -59,13 +60,13 @@ func PrepareDotTmpTestsFolder(rootPath, tmpParentRootRelativePath string, copyOv
 		return nil, err
 	}
 
-	// for _, f := range copyOverFolders {
-	// 	srcCtx := filepath.Dir(f)
-	// 	fn := filepath.Base(f)
-	// 	if err := copyOverFunc(path.Join(rootPath, srcCtx), baseFolder, fn); err != nil {
-	// 		return nil, err
-	// 	}
-	// }
+	for _, f := range copyOverFolders {
+		srcCtx := filepath.Dir(f)
+		fn := filepath.Base(f)
+		if err := copyOverFunc(path.Join(rootPath, srcCtx), baseFolder, fn); err != nil {
+			return nil, err
+		}
+	}
 
 	return &d, nil
 }
