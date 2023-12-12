@@ -2,7 +2,6 @@ package testrun
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"path"
 	"path/filepath"
@@ -25,8 +24,7 @@ func PrepareAndChdirIntoDotTmpTestsFolder(rootPath, tmpParentRootRelativePath st
 
 func PrepareDotTmpTestsFolder(rootPath, tmpParentRootRelativePath string, copyOverFolders ...string) (*string, error) {
 	d := path.Join(rootPath, tmpParentRootRelativePath, ".tmp", "tests" /*, fmt.Sprintf("%d", time.Now().UTC().Unix())*/)
-	wd, _ := os.Getwd()
-	log.Printf("tests folder is %v", path.Join(wd, d))
+
 	opts := cp.Options{
 		AddPermission: 0666,
 		OnDirExists: func(src, dest string) cp.DirExistsAction {

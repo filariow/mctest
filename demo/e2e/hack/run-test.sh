@@ -9,8 +9,6 @@ GODOG_CONCURRENCY="${GODOG_CONCURRENCY:-1}"
 [ -n "$GODOG_WIP" ] && GODOG_TAGS="--godog.tags=wip"
 GODOG_TAGS=${GODOG_TAGS:-"--godog.tags=~disabled"}
 
-# GODOG_EXTRA_ARGS="${GODOG_EXTRA_ARGS:-}"
-
 run_tests()
 {
     print_title "Running e2e tests"
@@ -19,8 +17,7 @@ run_tests()
 
     go -C "$td" test -v \
         "$GODOG_TAGS" \
-        --godog.concurrency "$GODOG_CONCURRENCY" \
-        "$GODOG_EXTRA_ARGS"
+        --godog.concurrency "$GODOG_CONCURRENCY"
     set +x
 }
 
