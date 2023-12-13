@@ -5,6 +5,7 @@ import (
 
 	econtext "github.com/filariow/mctest/pkg/context"
 	pinfra "github.com/filariow/mctest/pkg/infra"
+	"github.com/filariow/mctest/pkg/kube"
 )
 
 const (
@@ -32,28 +33,28 @@ func ProvisionersFromContextOrDie(ctx context.Context) map[string]pinfra.Cluster
 }
 
 // kubes
-func ManagementClusterIntoContext(ctx context.Context, value pinfra.Cluster) context.Context {
-	return econtext.IntoContext(ctx, keyManagementCluster, value)
+func ManagementClusterIntoContext(ctx context.Context, value kube.Client) context.Context {
+	return econtext.IntoContextInterface(ctx, keyManagementCluster, value)
 }
 
-func ManagementClusterFromContext(ctx context.Context) (*pinfra.Cluster, error) {
-	return econtext.FromContext[pinfra.Cluster](ctx, keyManagementCluster)
+func ManagementClusterFromContext(ctx context.Context) (kube.Client, error) {
+	return econtext.FromContextInterface[kube.Client](ctx, keyManagementCluster)
 }
 
-func ManagementClusterFromContextOrDie(ctx context.Context) pinfra.Cluster {
-	return econtext.FromContextOrDie[pinfra.Cluster](ctx, keyManagementCluster)
+func ManagementClusterFromContextOrDie(ctx context.Context) kube.Client {
+	return econtext.FromContextOrDieInterface[kube.Client](ctx, keyManagementCluster)
 }
 
-func ClusterIntoContext(ctx context.Context, value pinfra.Cluster) context.Context {
-	return econtext.IntoContext(ctx, keyCluster, value)
+func ClusterIntoContext(ctx context.Context, value kube.Client) context.Context {
+	return econtext.IntoContextInterface(ctx, keyCluster, value)
 }
 
-func ClusterFromContext(ctx context.Context) (*pinfra.Cluster, error) {
-	return econtext.FromContext[pinfra.Cluster](ctx, keyCluster)
+func ClusterFromContext(ctx context.Context) (kube.Client, error) {
+	return econtext.FromContextInterface[kube.Client](ctx, keyCluster)
 }
 
-func ClusterFromContextOrDie(ctx context.Context) pinfra.Cluster {
-	return econtext.FromContextOrDie[pinfra.Cluster](ctx, keyCluster)
+func ClusterFromContextOrDie(ctx context.Context) kube.Client {
+	return econtext.FromContextOrDieInterface[kube.Client](ctx, keyCluster)
 }
 
 // namespaces

@@ -5,10 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"os"
+	"path"
 	"strings"
 	"time"
 
 	"github.com/filariow/mctest/pkg/poll"
+	"github.com/filariow/mctest/pkg/testrun"
 	corev1 "k8s.io/api/core/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -36,6 +39,14 @@ type Client interface {
 	DiscoveryClient() discovery.CachedDiscoveryInterface
 	ClientOptions() client.Options
 	RESTConfig() *rest.Config
+
+	ParseResources(context.Context, string) ([]unstructured.Unstructured, error)
+	WaitForDeletionOfResourceUnstructured(ctx context.Context, u unstructured.Unstructured) error
+	WatchForEventOnResourceUnstructured(ctx context.Context, u unstructured.Unstructured, check func(e watch.Event) (bool, error)) error
+	CreateNamespaceWithLabels(ctx context.Context, namespace string, labels map[string]string) (*corev1.Namespace, error)
+
+	Livez(ctx context.Context) ([]byte, error)
+	Healthz(ctx context.Context) ([]byte, error)
 }
 
 type Kubernetes struct {
@@ -112,6 +123,51 @@ func (k *Kubernetes) ClientOptions() client.Options {
 	return k.clientOptions
 }
 
+func (k *Kubernetes) Livez(ctx context.Context) ([]byte, error) {
+	return k.DiscoveryClient().RESTClient().Get().AbsPath("/livez").DoRaw(ctx)
+}
+
+func (k *Kubernetes) Healthz(ctx context.Context) ([]byte, error) {
+	return k.DiscoveryClient().RESTClient().Get().AbsPath("/healthz").DoRaw(ctx)
+}
+
+// TODO: remove hard constraints on path
+func (k *Kubernetes) DeployOperatorInNamespace(ctx context.Context, opPath string, ns string) error {
+	tf, err := testrun.TestFolderFromContext(ctx)
+	if err != nil {
+		return errors.Join(testrun.ErrTestFolderNotFound, err)
+	}
+
+	// read deployment manifests
+	opd := path.Join(*tf, "config", "default", opPath)
+	op, err := os.ReadFile(opd)
+	if err != nil {
+		return err
+	}
+
+	// Apply deployment resources
+	if err := poll.Do(ctx, 10*time.Second, func(ctx context.Context) error {
+		uu, err := k.ParseResources(ctx, string(op))
+		if err != nil {
+			return err
+		}
+
+		for _, u := range uu {
+			if u.GetKind() == "Namespace" {
+				continue
+			}
+			u.SetNamespace(ns)
+			if err := k.Create(ctx, &u, &client.CreateOptions{}); err != nil {
+				return err
+			}
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+	return nil
+}
+
 func (k *Kubernetes) ParseResources(ctx context.Context, spec string) ([]unstructured.Unstructured, error) {
 	uu := []unstructured.Unstructured{}
 	decoder := yamlutil.NewYAMLOrJSONDecoder(strings.NewReader(spec), 100)
@@ -167,39 +223,6 @@ func (k *Kubernetes) NamespacedResourcesAreCreated(ctx context.Context, spec str
 	return nil
 }
 
-func (k *Kubernetes) ResourcesAreCreatedInNamespace(ctx context.Context, namespace, spec string) error {
-	return poll.Do(ctx, time.Second, func(ictx context.Context) error {
-		uu, err := k.ParseResources(ictx, spec)
-		if err != nil {
-			return err
-		}
-
-		for _, u := range uu {
-			u.SetNamespace(namespace)
-			if err := k.Create(ictx, &u, &client.CreateOptions{}); err != nil {
-				return err
-			}
-		}
-
-		return nil
-	})
-}
-
-func (k *Kubernetes) ResourcesAreUpdated(ctx context.Context, spec string) error {
-	uu, err := k.ParseResources(ctx, spec)
-	if err != nil {
-		return err
-	}
-
-	for _, u := range uu {
-		if err := k.Update(ctx, u.DeepCopy(), &client.UpdateOptions{}); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
 func (k *Kubernetes) ResourcesExistInNamespace(ctx context.Context, namespace, spec string) error {
 	return k.resourcesExist(ctx, spec, &namespace)
 }
@@ -228,7 +251,7 @@ func (k *Kubernetes) resourceExist(ctx context.Context, u unstructured.Unstructu
 	ctxd, cf := context.WithTimeout(ctx, 2*time.Minute)
 	defer cf()
 
-	_, err := poll.DoR(ctxd, time.Second, func(ictx context.Context) (*unstructured.Unstructured, error) {
+	err := poll.Do(ctxd, time.Second, func(ictx context.Context) error {
 		lu := u.DeepCopy()
 		if ns != nil {
 			lu.SetNamespace(*ns)
@@ -236,51 +259,14 @@ func (k *Kubernetes) resourceExist(ctx context.Context, u unstructured.Unstructu
 
 		t := types.NamespacedName{Namespace: lu.GetNamespace(), Name: lu.GetName()}
 		if err := k.Get(ctx, t, lu, &client.GetOptions{}); err != nil {
-			return nil, err
+			return err
 		}
-		return lu, nil
+		return nil
 	})
 	if err != nil {
 		log.Printf("error retrieving resource %v: %v", u.Object, err)
 		return err
 	}
-	return nil
-}
-
-func (k *Kubernetes) ResourcesNotExist(ctx context.Context, spec string) error {
-	uu, err := k.ParseResources(ctx, spec)
-	if err != nil {
-		return err
-	}
-
-	for _, u := range uu {
-		ctxd, cf := context.WithTimeout(ctx, 2*time.Minute)
-		_, err = poll.DoR(ctxd, time.Second, func(ictx context.Context) (*unstructured.Unstructured, error) {
-			lctx, lcf := context.WithTimeout(ictx, 1*time.Minute)
-			defer lcf()
-
-			t := types.NamespacedName{Namespace: u.GetNamespace(), Name: u.GetName()}
-			lu := u.DeepCopy()
-			if err := k.Get(lctx, t, lu, &client.GetOptions{}); err != nil {
-				if kerrors.IsNotFound(err) {
-					return nil, nil
-				}
-			}
-			return nil, err
-		})
-		cf()
-
-		if err != nil {
-			ld, err := u.MarshalJSON()
-			if err != nil {
-				return fmt.Errorf(
-					"resource exists: [ ApiVersion=%s, Kind=%s, Namespace=%s, Name=%s ]. Error marshaling as json: %w",
-					u.GetAPIVersion(), u.GetKind(), u.GetNamespace(), u.GetName(), err)
-			}
-			return fmt.Errorf("resource exists: %s", ld)
-		}
-	}
-
 	return nil
 }
 

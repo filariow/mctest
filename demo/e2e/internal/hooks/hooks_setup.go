@@ -4,7 +4,6 @@ import (
 	"context"
 	_ "embed"
 	"fmt"
-	"log"
 	"os"
 	"path"
 	"slices"
@@ -59,7 +58,7 @@ func injectProvisioners(ctx context.Context, s *godog.Scenario) (context.Context
 	}
 
 	hostProvisioners := map[string]infra.ClusterProvisioner{}
-	dp := clusterapi.NewClusterAPIProvisioner(k.Kubernetes, scopedHostManifests, s.Id)
+	dp := clusterapi.NewClusterAPIProvisioner(k, scopedHostManifests, s.Id)
 	if n := dp.NumClustersProvisionedInProvisionRound(); n != 1 {
 		panic(fmt.Sprintf("host provider is expected to provision just 1 cluster, found %d", n))
 	}
@@ -83,35 +82,44 @@ func injectManagementCluster(ctx context.Context, sc *godog.Scenario) (context.C
 		return ctx, err
 	}
 
-	h := infra.NewCluster(k)
-
 	// inject management cluster
-	ctx = einfra.ManagementClusterIntoContext(ctx, *h)
-	ctx = einfra.ClusterIntoContext(ctx, *h)
+	ctx = einfra.ManagementClusterIntoContext(ctx, k)
 	return ctx, nil
 }
 
-// if scenario's tag contains @dedicated-cluster, this hook will provision a dedicated cluster
-func injectDedicatedClusterIfRequired(ctx context.Context, sc *godog.Scenario) (context.Context, error) {
-	// dedicated host not requested, inject management cluster as the host cluster
-	if !isDedicatedClusterRequired(sc) {
-		log.Printf("dedicated cluster required, provisioning dedicated cluster")
-		ctx, err := provisionAndInjectDedicatedCluster(ctx, sc)
-		if err != nil {
-			return ctx, err
-		}
+func isDedicatedClusterRequired(s *godog.Scenario) bool {
+	return slices.ContainsFunc(
+		s.Tags,
+		func(e *messages.PickleTag) bool {
+			return e.Name == TagDedicatedCluster
+		})
+}
 
-		return prepareScenarioNamespaces(ctx, sc)
+func prepareAuxiliaryNamespaceInManagementCluster(ctx context.Context, sc *godog.Scenario) (context.Context, error) {
+	// get management cluster from context
+	h, err := einfra.ManagementClusterFromContext(ctx)
+	if err != nil {
+		return ctx, err
 	}
 
-	log.Printf("dedicated cluster not required")
-	return ctx, nil
+	// create the scenario namespace
+	an, err := createAuxiliaryTestNamespace(ctx, h, sc.Id)
+	if err != nil {
+		return ctx, err
+	}
 
+	return einfra.AuxiliaryScenarioNamespaceIntoContext(ctx, an.Name), nil
 }
 
-func provisionAndInjectDedicatedCluster(ctx context.Context, sc *godog.Scenario) (context.Context, error) {
-	// TODO: is this needed for this demo?
+func prepareTestEnvironment(ctx context.Context, sc *godog.Scenario) (context.Context, error) {
+	if isDedicatedClusterRequired(sc) {
+		return prepareDedicatedTestEnvironment(ctx, sc)
+	}
 
+	return prepareTestEnvironmentOnManagementCluster(ctx, sc)
+}
+
+func prepareDedicatedTestEnvironment(ctx context.Context, sc *godog.Scenario) (context.Context, error) {
 	// retrieve provisioner
 	hostProvisioners, err := einfra.ProvisionersFromContext(ctx)
 	if err != nil {
@@ -153,68 +161,40 @@ func provisionAndInjectDedicatedCluster(ctx context.Context, sc *godog.Scenario)
 		return ctx, err
 	}
 
-	// TODO: test connection to the cluster
-	// TODO: retry fetching config and building kube client if no connection available
-
 	// inject into context
-	h := infra.NewCluster(k)
-	return einfra.ClusterIntoContext(ctx, *h), err
+	return einfra.ClusterIntoContext(ctx, k), err
 }
 
-func isDedicatedClusterRequired(s *godog.Scenario) bool {
-	return slices.ContainsFunc(
-		s.Tags,
-		func(e *messages.PickleTag) bool {
-			return e.Name == TagDedicatedCluster
-		})
-}
+func prepareTestEnvironmentOnManagementCluster(ctx context.Context, sc *godog.Scenario) (context.Context, error) {
+	h, err := einfra.ManagementClusterFromContext(ctx)
 
-func prepareScenarioNamespaces(ctx context.Context, sc *godog.Scenario) (context.Context, error) {
-	// get host cluster from context
-	h, err := einfra.ClusterFromContext(ctx)
-	if err != nil {
-		return ctx, err
-	}
-
-	// create the scenario namespace
-	an, err := createAuxiliaryTestNamespace(ctx, h, sc.Id)
-	if err != nil {
-		return ctx, err
-	}
 	n, err := createTestNamespace(ctx, h, sc.Id)
 	if err != nil {
 		return ctx, err
 	}
 
 	// inject scenario namespace in context
-	ctx = einfra.AuxiliaryScenarioNamespaceIntoContext(ctx, an.Name)
 	ctx = einfra.ScenarioNamespaceIntoContext(ctx, n.Name)
 
-	// if the host is dedicated for this scenario, provide the admin client
-	if isDedicatedClusterRequired(sc) {
-		return ctx, nil
-	}
-
-	// otherwise build a namespaced client
-	nk, err := prepareNamespacedClient(ctx, h.Kubernetes, n.Name)
+	// inject a namespaced client
+	nk, err := prepareNamespacedClient(ctx, h, n.Name)
 	if err != nil {
 		return ctx, err
 	}
 
 	// update host cluster into context
-	nh := infra.NewCluster(nk)
-	return einfra.ClusterIntoContext(ctx, *nh), nil
+	return einfra.ClusterIntoContext(ctx, nk), nil
 }
 
-func createTestNamespace(ctx context.Context, cluster *infra.Cluster, scenarioId string) (*corev1.Namespace, error) {
+func createTestNamespace(ctx context.Context, cluster kube.Client, scenarioId string) (*corev1.Namespace, error) {
 	return createNamespace(ctx, cluster, "test", scenarioId)
 }
 
-func createAuxiliaryTestNamespace(ctx context.Context, cluster *infra.Cluster, scenarioId string) (*corev1.Namespace, error) {
+func createAuxiliaryTestNamespace(ctx context.Context, cluster kube.Client, scenarioId string) (*corev1.Namespace, error) {
 	return createNamespace(ctx, cluster, "test-aux", scenarioId)
 }
 
-func createNamespace(ctx context.Context, cluster *infra.Cluster, prefix, scenarioId string) (*corev1.Namespace, error) {
+func createNamespace(ctx context.Context, cluster kube.Client, prefix, scenarioId string) (*corev1.Namespace, error) {
 	name := fmt.Sprintf("%s-%s", prefix, scenarioId)
 	labels := map[string]string{
 		"scope":    "test",
@@ -223,7 +203,7 @@ func createNamespace(ctx context.Context, cluster *infra.Cluster, prefix, scenar
 	return cluster.CreateNamespaceWithLabels(ctx, name, labels)
 }
 
-func prepareNamespacedClient(ctx context.Context, k *kube.Kubernetes, ns string) (*kube.Kubernetes, error) {
+func prepareNamespacedClient(ctx context.Context, k kube.Client, ns string) (kube.Client, error) {
 	var err error
 
 	// get clientset
@@ -298,7 +278,7 @@ func prepareNamespacedClient(ctx context.Context, k *kube.Kubernetes, ns string)
 		UserName: fmt.Sprintf("system:serviceaccount:%s:%s", ns, sa.Name),
 		UID:      string(sa.GetUID()),
 	}
-	return kube.New(cfg, client.Options{Scheme: scheme.DefaultSchemeHost})
+	return kube.NewNamespaced(cfg, client.Options{Scheme: scheme.DefaultSchemeHost}, ns)
 }
 
 func hookPrepareScenarioTestFolder(ctx context.Context, sc *godog.Scenario) (context.Context, error) {

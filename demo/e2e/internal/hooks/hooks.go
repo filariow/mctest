@@ -16,14 +16,14 @@ func injectHookSetup(ctx *godog.ScenarioContext) {
 	// inject ClusterAPI's management cluster request
 	ctx.Before(injectManagementCluster)
 
-	// set and create the ContextNamespace on ClusterAPI's Cluster
-	ctx.Before(prepareScenarioNamespaces)
+	// create auxiliary namespace in Management Cluster
+	ctx.Before(prepareAuxiliaryNamespaceInManagementCluster)
 
 	// inject provisioners
 	ctx.Before(injectProvisioners)
 
-	// handle dedicated cluster request
-	ctx.Before(injectDedicatedClusterIfRequired)
+	// prepare the test environment
+	ctx.Before(prepareTestEnvironment)
 
 	// set timeout for single test
 	ctx.Before(setTimeout)

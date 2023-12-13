@@ -27,7 +27,7 @@ const clusterKind string = "Cluster"
 var ErrClusterNotFound error = fmt.Errorf("error cluster not found")
 
 type ClusterAPIProvisioner struct {
-	Kubernetes *kube.Kubernetes
+	Kubernetes kube.Client
 	Manifests  []unstructured.Unstructured
 
 	suffix     string
@@ -36,7 +36,7 @@ type ClusterAPIProvisioner struct {
 }
 
 func NewClusterAPIProvisioner(
-	kubernetes *kube.Kubernetes,
+	kubernetes kube.Client,
 	manifests []unstructured.Unstructured,
 	suffix string,
 ) infra.ClusterProvisioner {
@@ -66,15 +66,13 @@ func (p *ClusterAPIProvisioner) WaitForProvisionedClusters(ctx context.Context) 
 					return err
 				}
 
-				c := infra.NewCluster(k)
-
-				lc, err := c.Livez(ctx)
+				lc, err := k.Livez(ctx)
 				if err != nil {
 					return err
 				}
 				log.Printf("livez called successfully, response is: %v", string(lc))
 
-				hc, err := c.Healthz(ctx)
+				hc, err := k.Healthz(ctx)
 				if err != nil {
 					return err
 				}
@@ -123,14 +121,14 @@ func (p *ClusterAPIProvisioner) GetAllAdminKubeconfigs(ctx context.Context) (map
 func (p *ClusterAPIProvisioner) Provision(ctx context.Context) error {
 	// create other resources
 	for _, u := range p.clusterDef {
-		if err := p.Kubernetes.CreateResourceUnstructured(ctx, u); err != nil {
+		if err := p.Kubernetes.Create(ctx, u.DeepCopy(), &client.CreateOptions{}); err != nil {
 			return fmt.Errorf("error creating namespaced ClusterAPI resource:%w\n%v", err, u)
 		}
 	}
 
 	// create clusters
 	for _, u := range p.clusters {
-		if err := p.Kubernetes.CreateResourceUnstructured(ctx, u); err != nil {
+		if err := p.Kubernetes.Create(ctx, u.DeepCopy(), &client.CreateOptions{}); err != nil {
 			return fmt.Errorf("error creating namespaced ClusterAPI Cluster resource:%w\n%v", err, u)
 		}
 	}
@@ -186,7 +184,7 @@ func (p *ClusterAPIProvisioner) Unprovision(ctx context.Context) error {
 	// delete clusters before other to avoid deletion errors
 	tw := []unstructured.Unstructured{}
 	for _, c := range p.clusters {
-		err := p.Kubernetes.DeleteResourceUnstructured(ctx, c)
+		err := p.Kubernetes.Delete(ctx, c.DeepCopy(), &client.DeleteOptions{})
 		switch {
 		case err == nil:
 			tw = append(tw, c) // fill the list of ones to wait for deletion
@@ -209,7 +207,7 @@ func (p *ClusterAPIProvisioner) Unprovision(ctx context.Context) error {
 
 	// delete other resources
 	for _, u := range p.clusterDef {
-		if err := p.Kubernetes.DeleteResourceUnstructured(ctx, u); !kerrors.IsNotFound(err) {
+		if err := p.Kubernetes.Delete(ctx, u.DeepCopy(), &client.DeleteOptions{}); !kerrors.IsNotFound(err) {
 			return err
 		}
 	}
