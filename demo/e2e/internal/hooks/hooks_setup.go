@@ -19,6 +19,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/client-go/rest"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/filariow/mctest/demo/e2e/internal/assets"
 	einfra "github.com/filariow/mctest/demo/e2e/internal/infra"
@@ -36,7 +37,7 @@ func setTimeout(ctx context.Context, _ *godog.Scenario) (context.Context, error)
 }
 
 func injectProvisioners(ctx context.Context, s *godog.Scenario) (context.Context, error) {
-	k, err := einfra.ClusterFromContext(ctx)
+	k, err := einfra.ManagementClusterFromContext(ctx)
 	if err != nil {
 		return ctx, err
 	}
@@ -77,7 +78,7 @@ func injectManagementCluster(ctx context.Context, sc *godog.Scenario) (context.C
 		return ctx, err
 	}
 
-	k, err := kube.New(cfg, scheme.DefaultSchemeHost, true)
+	k, err := kube.New(cfg, client.Options{Scheme: scheme.DefaultSchemeHost})
 	if err != nil {
 		return ctx, err
 	}
@@ -147,7 +148,7 @@ func provisionAndInjectDedicatedCluster(ctx context.Context, sc *godog.Scenario)
 	}()
 
 	// build kube.Kubernetes
-	k, err := kube.New(cfg, scheme.DefaultSchemeHost, true)
+	k, err := kube.New(cfg, client.Options{Scheme: scheme.DefaultSchemeHost})
 	if err != nil {
 		return ctx, err
 	}
@@ -190,7 +191,7 @@ func prepareScenarioNamespaces(ctx context.Context, sc *godog.Scenario) (context
 	ctx = einfra.ScenarioNamespaceIntoContext(ctx, n.Name)
 
 	// if the host is dedicated for this scenario, provide the admin client
-	if h.IsDedicated {
+	if isDedicatedClusterRequired(sc) {
 		return ctx, nil
 	}
 
@@ -214,25 +215,26 @@ func createAuxiliaryTestNamespace(ctx context.Context, cluster *infra.Cluster, s
 }
 
 func createNamespace(ctx context.Context, cluster *infra.Cluster, prefix, scenarioId string) (*corev1.Namespace, error) {
-	n := corev1.Namespace{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: fmt.Sprintf("%s-%s", prefix, scenarioId),
-			Labels: map[string]string{
-				"scope":    "test",
-				"scenario": scenarioId,
-			},
-		},
+	name := fmt.Sprintf("%s-%s", prefix, scenarioId)
+	labels := map[string]string{
+		"scope":    "test",
+		"scenario": scenarioId,
 	}
-	return cluster.Cli.CoreV1().Namespaces().Create(ctx, &n, metav1.CreateOptions{})
+	return cluster.CreateNamespaceWithLabels(ctx, name, labels)
 }
 
 func prepareNamespacedClient(ctx context.Context, k *kube.Kubernetes, ns string) (*kube.Kubernetes, error) {
 	var err error
 
-	// create service account
-	sa := &corev1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{Name: "test-runner"}}
-	sa, err = k.Cli.CoreV1().ServiceAccounts(ns).Create(ctx, sa, metav1.CreateOptions{})
+	// get clientset
+	cli, err := k.Clientset()
 	if err != nil {
+		return nil, err
+	}
+
+	// create service account
+	sa := &corev1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{Name: "test-runner", Namespace: ns}}
+	if err = k.Create(ctx, sa, &client.CreateOptions{}); err != nil {
 		return nil, err
 	}
 
@@ -242,14 +244,17 @@ func prepareNamespacedClient(ctx context.Context, k *kube.Kubernetes, ns string)
 		es := int64(d.Sub(time.Now()).Seconds())
 		r.Spec.ExpirationSeconds = &es
 	}
-	r, err = k.Cli.CoreV1().ServiceAccounts(ns).CreateToken(ctx, sa.Name, r, metav1.CreateOptions{})
+	r, err = cli.CoreV1().ServiceAccounts(ns).CreateToken(ctx, sa.Name, r, metav1.CreateOptions{})
 	if err != nil {
 		return nil, err
 	}
 
 	// create admin role
-	ro := &rbacv1.Role{
-		ObjectMeta: metav1.ObjectMeta{Name: sa.Name},
+	ro := rbacv1.Role{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      sa.Name,
+			Namespace: ns,
+		},
 		Rules: []rbacv1.PolicyRule{
 			{
 				Verbs:     []string{"*"},
@@ -259,14 +264,16 @@ func prepareNamespacedClient(ctx context.Context, k *kube.Kubernetes, ns string)
 			},
 		},
 	}
-	ro, err = k.Cli.RbacV1().Roles(ns).Create(ctx, ro, metav1.CreateOptions{})
-	if err != nil {
+	if k.Create(ctx, &ro, &client.CreateOptions{}); err != nil {
 		return nil, err
 	}
 
 	// create rolebinding
-	rb := &rbacv1.RoleBinding{
-		ObjectMeta: metav1.ObjectMeta{Name: sa.Name},
+	rb := rbacv1.RoleBinding{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      sa.Name,
+			Namespace: ns,
+		},
 		Subjects: []rbacv1.Subject{
 			{
 				Kind:      "ServiceAccount",
@@ -281,18 +288,17 @@ func prepareNamespacedClient(ctx context.Context, k *kube.Kubernetes, ns string)
 			Name:     ro.Name,
 		},
 	}
-	rb, err = k.Cli.RbacV1().RoleBindings(ns).Create(ctx, rb, metav1.CreateOptions{})
-	if err != nil {
+	if err := k.Create(ctx, &rb, &client.CreateOptions{}); err != nil {
 		return nil, err
 	}
 
 	// bake client
-	cfg := *k.Cfg
+	cfg := k.RESTConfig()
 	cfg.Impersonate = rest.ImpersonationConfig{
 		UserName: fmt.Sprintf("system:serviceaccount:%s:%s", ns, sa.Name),
 		UID:      string(sa.GetUID()),
 	}
-	return kube.New(&cfg, scheme.DefaultSchemeHost, false)
+	return kube.New(cfg, client.Options{Scheme: scheme.DefaultSchemeHost})
 }
 
 func hookPrepareScenarioTestFolder(ctx context.Context, sc *godog.Scenario) (context.Context, error) {

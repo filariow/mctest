@@ -30,7 +30,7 @@ func cancelRunContext(ctx context.Context, _ *godog.Scenario, err error) (contex
 func unprovisionClusters(ctx context.Context, sc *godog.Scenario, err error) (context.Context, error) {
 	// if an error occurred before, do not cleanup
 	if err != nil {
-		return ctx, err
+		return ctx, nil
 	}
 
 	// fetch all provisioners and unprovision
@@ -56,7 +56,7 @@ func unprovisionClusters(ctx context.Context, sc *godog.Scenario, err error) (co
 func destroyHostResources(ctx context.Context, sc *godog.Scenario, err error) (context.Context, error) {
 	// if an error occurred before, do not cleanup
 	if err != nil {
-		return ctx, err
+		return ctx, nil
 	}
 
 	// fetch management cluster from context
@@ -74,7 +74,7 @@ func destroyHostResources(ctx context.Context, sc *godog.Scenario, err error) (c
 
 	// list all namespaces related to current scenario
 	nn := corev1.NamespaceList{}
-	if errList := kh.CRCli.List(ctx, &nn, &client.ListOptions{LabelSelector: s}); errList != nil {
+	if errList := kh.List(ctx, &nn, &client.ListOptions{LabelSelector: s}); errList != nil {
 		cerr := errors.Join(err, errList)
 		log.Printf("error listing namespaces before destroying: %s", cerr)
 		return ctx, cerr
@@ -83,7 +83,7 @@ func destroyHostResources(ctx context.Context, sc *godog.Scenario, err error) (c
 
 	// delete all namespaces related to current scenario
 	for _, n := range nn.Items {
-		if errDel := kh.CRCli.Delete(ctx, &n, &client.DeleteOptions{}); errDel != nil {
+		if errDel := kh.Delete(ctx, &n, &client.DeleteOptions{}); errDel != nil {
 			cerr := errors.Join(err, errDel)
 			log.Printf("error destroying namespace %s in management cluster: %s", n.Name, cerr)
 			return ctx, cerr
@@ -97,7 +97,7 @@ func hookDestroyScenarioTestFolder(ctx context.Context, sc *godog.Scenario, err 
 	// if test failed or any other error happened,
 	// do not delete the test folder to allow inspection
 	if err != nil {
-		return ctx, err
+		return ctx, nil
 	}
 
 	tf, err := testrun.TestFolderFromContext(ctx)

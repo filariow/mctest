@@ -20,6 +20,16 @@ func NewCluster(k *kube.Kubernetes) *Cluster {
 	return &Cluster{k}
 }
 
+// Livez
+func (c *Cluster) Livez(ctx context.Context) ([]byte, error) {
+	return c.DiscoveryClient().RESTClient().Get().AbsPath("/livez").DoRaw(ctx)
+}
+
+// Healthz
+func (c *Cluster) Healthz(ctx context.Context) ([]byte, error) {
+	return c.DiscoveryClient().RESTClient().Get().AbsPath("/healthz").DoRaw(ctx)
+}
+
 // operator
 func (c *Cluster) DeployOperatorInNamespace(ctx context.Context, opPath string, ns string) error {
 	tf, err := testrun.TestFolderFromContext(ctx)
@@ -46,7 +56,7 @@ func (c *Cluster) DeployOperatorInNamespace(ctx context.Context, opPath string, 
 				continue
 			}
 			u.SetNamespace(ns)
-			if err := c.Kubernetes.CreateNamespacedResourceUnstructured(ctx, u); err != nil {
+			if err := c.Kubernetes.CreateResourceUnstructured(ctx, u); err != nil {
 				return err
 			}
 		}

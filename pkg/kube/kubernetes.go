@@ -13,74 +13,103 @@ import (
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/runtime/serializer/yaml"
 	"k8s.io/apimachinery/pkg/types"
 	yamlutil "k8s.io/apimachinery/pkg/util/yaml"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/discovery"
 	cacheddiscovery "k8s.io/client-go/discovery/cached/memory"
-	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
-	"k8s.io/client-go/restmapper"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-type Kubernetes struct {
-	Cfg    *rest.Config
-	Scheme *runtime.Scheme
+var _ Client = &Kubernetes{}
+var _ Client = &NamespacedKubernetes{}
 
-	Cli             *kubernetes.Clientset
-	Dyn             *dynamic.DynamicClient
-	CRCli           client.Client
-	DiscoveryClient discovery.CachedDiscoveryInterface
-	Mapper          *restmapper.DeferredDiscoveryRESTMapper
+type Client interface {
+	client.WithWatch
 
-	IsDedicated bool
+	Clientset() (*kubernetes.Clientset, error)
+	DiscoveryClient() discovery.CachedDiscoveryInterface
+	ClientOptions() client.Options
+	RESTConfig() *rest.Config
 }
 
-func New(cfg *rest.Config, scheme *runtime.Scheme, dedicated bool) (*Kubernetes, error) {
+type Kubernetes struct {
+	client.WithWatch
+
+	cfg             *rest.Config
+	clientOptions   client.Options
+	discoveryClient discovery.CachedDiscoveryInterface
+}
+
+type NamespacedKubernetes struct {
+	Kubernetes
+
+	Namespace string
+}
+
+func NewNamespaced(cfg *rest.Config, opts client.Options, namespace string) (*NamespacedKubernetes, error) {
 	cli, err := kubernetes.NewForConfig(cfg)
-	if err != nil {
-		return nil, err
-	}
-	dyn, err := dynamic.NewForConfig(cfg)
 	if err != nil {
 		return nil, err
 	}
 
 	discoveryClient := cacheddiscovery.NewMemCacheClient(cli.Discovery())
-	mapper := restmapper.NewDeferredDiscoveryRESTMapper(discoveryClient)
+	crcli, err := NewNamespacedClient(cfg, opts, namespace)
+	if err != nil {
+		return nil, err
+	}
+	return &NamespacedKubernetes{
+		Kubernetes: Kubernetes{
+			WithWatch:       crcli,
+			cfg:             cfg,
+			clientOptions:   opts,
+			discoveryClient: discoveryClient,
+		},
+		Namespace: namespace,
+	}, nil
 
-	opts := client.Options{Scheme: scheme, Mapper: mapper}
-	crcli, err := client.New(cfg, opts)
+	return nil, nil
+}
+
+func New(cfg *rest.Config, opts client.Options) (*Kubernetes, error) {
+	cli, err := kubernetes.NewForConfig(cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	discoveryClient := cacheddiscovery.NewMemCacheClient(cli.Discovery())
+	crcli, err := client.NewWithWatch(cfg, opts)
 	if err != nil {
 		return nil, err
 	}
 
 	return &Kubernetes{
-		Cfg:             cfg,
-		Cli:             cli,
-		Dyn:             dyn,
-		CRCli:           crcli,
-		DiscoveryClient: discoveryClient,
-		Mapper:          mapper,
-		IsDedicated:     dedicated,
+		WithWatch:       crcli,
+		cfg:             cfg,
+		clientOptions:   opts,
+		discoveryClient: discoveryClient,
 	}, nil
 }
 
-func (k *Kubernetes) DynNamespacedResource(
-	gvr schema.GroupVersionResource,
-	obj interface{},
-) (*unstructured.Unstructured, dynamic.ResourceInterface, error) {
-	um, err := runtime.DefaultUnstructuredConverter.ToUnstructured(obj)
-	if err != nil {
-		return nil, nil, err
-	}
-	u := &unstructured.Unstructured{Object: um}
-	return u, k.Dyn.Resource(gvr).Namespace(u.GetNamespace()), nil
+func (k *Kubernetes) Clientset() (*kubernetes.Clientset, error) {
+	return kubernetes.NewForConfig(k.RESTConfig())
+}
+
+func (k *Kubernetes) DiscoveryClient() discovery.CachedDiscoveryInterface {
+	return k.discoveryClient
+}
+
+func (k *Kubernetes) RESTConfig() *rest.Config {
+	return &(*k.cfg)
+}
+
+func (k *Kubernetes) ClientOptions() client.Options {
+	return k.clientOptions
 }
 
 func (k *Kubernetes) ParseResources(ctx context.Context, spec string) ([]unstructured.Unstructured, error) {
@@ -109,57 +138,6 @@ func (k *Kubernetes) ParseResources(ctx context.Context, spec string) ([]unstruc
 	return uu, nil
 }
 
-func (k *Kubernetes) BuildClientForResource(
-	ctx context.Context,
-	unstructuredObj unstructured.Unstructured,
-) (dynamic.ResourceInterface, error) {
-	return k.BuildClientForGroupVersionKind(
-		ctx, unstructuredObj.GroupVersionKind())
-}
-
-func (k *Kubernetes) BuildNamespacedClientForResource(
-	ctx context.Context,
-	unstructuredObj unstructured.Unstructured,
-	namespace string,
-) (dynamic.ResourceInterface, error) {
-	return k.BuildNamespacedClientForGroupVersionKind(
-		ctx, unstructuredObj.GroupVersionKind(), namespace)
-}
-
-func (k *Kubernetes) BuildNamespacedClientForGroupVersionKind(
-	ctx context.Context,
-	gvk schema.GroupVersionKind,
-	namespace string,
-) (dynamic.ResourceInterface, error) {
-	if namespace == "" {
-		return nil, fmt.Errorf("empty namespaced provided, can not create namespaced client")
-	}
-	cli, err := k.BuildClientForGroupVersionKind(ctx, gvk)
-	if err != nil {
-		return nil, err
-	}
-
-	return cli.Namespace(namespace), nil
-}
-
-func (k *Kubernetes) BuildClientForGroupVersionKind(
-	ctx context.Context,
-	gvk schema.GroupVersionKind,
-) (dynamic.NamespaceableResourceInterface, error) {
-	gr, err := restmapper.GetAPIGroupResources(k.Cli.Discovery())
-	if err != nil {
-		return nil, fmt.Errorf("error building namespaced client: %w", err)
-	}
-
-	mapper := restmapper.NewDiscoveryRESTMapper(gr)
-	mapping, err := mapper.RESTMapping(gvk.GroupKind(), gvk.Version)
-	if err != nil {
-		return nil, fmt.Errorf("error building namespaced client: %w", err)
-	}
-
-	return k.Dyn.Resource(mapping.Resource), nil
-}
-
 // steps
 func (k *Kubernetes) ResourcesAreCreated(ctx context.Context, spec string) error {
 	uu, err := k.ParseResources(ctx, spec)
@@ -181,7 +159,7 @@ func (k *Kubernetes) NamespacedResourcesAreCreated(ctx context.Context, spec str
 	}
 
 	for _, u := range uu {
-		if err := k.CreateNamespacedResourceUnstructured(ctx, u); err != nil {
+		if err := k.Create(ctx, &u, &client.CreateOptions{}); err != nil {
 			return err
 		}
 	}
@@ -198,7 +176,7 @@ func (k *Kubernetes) ResourcesAreCreatedInNamespace(ctx context.Context, namespa
 
 		for _, u := range uu {
 			u.SetNamespace(namespace)
-			if err := k.CreateNamespacedResourceUnstructured(ictx, u); err != nil {
+			if err := k.Create(ictx, &u, &client.CreateOptions{}); err != nil {
 				return err
 			}
 		}
@@ -214,18 +192,7 @@ func (k *Kubernetes) ResourcesAreUpdated(ctx context.Context, spec string) error
 	}
 
 	for _, u := range uu {
-		dri, err := k.BuildClientForResource(ctx, u)
-		if err != nil {
-			return err
-		}
-
-		po, err := dri.Get(ctx, u.GetName(), metav1.GetOptions{})
-		if err != nil {
-			return err
-		}
-
-		po.Object["spec"] = u.Object["spec"]
-		if _, err := dri.Update(ctx, po, metav1.UpdateOptions{}); err != nil {
+		if err := k.Update(ctx, u.DeepCopy(), &client.UpdateOptions{}); err != nil {
 			return err
 		}
 	}
@@ -268,7 +235,7 @@ func (k *Kubernetes) resourceExist(ctx context.Context, u unstructured.Unstructu
 		}
 
 		t := types.NamespacedName{Namespace: lu.GetNamespace(), Name: lu.GetName()}
-		if err := k.CRCli.Get(ctx, t, lu, &client.GetOptions{}); err != nil {
+		if err := k.Get(ctx, t, lu, &client.GetOptions{}); err != nil {
 			return nil, err
 		}
 		return lu, nil
@@ -287,17 +254,14 @@ func (k *Kubernetes) ResourcesNotExist(ctx context.Context, spec string) error {
 	}
 
 	for _, u := range uu {
-		dri, err := k.BuildClientForResource(ctx, u)
-		if err != nil {
-			return err
-		}
-
 		ctxd, cf := context.WithTimeout(ctx, 2*time.Minute)
 		_, err = poll.DoR(ctxd, time.Second, func(ictx context.Context) (*unstructured.Unstructured, error) {
 			lctx, lcf := context.WithTimeout(ictx, 1*time.Minute)
 			defer lcf()
 
-			if _, err := dri.Get(lctx, u.GetName(), metav1.GetOptions{}); err != nil {
+			t := types.NamespacedName{Namespace: u.GetNamespace(), Name: u.GetName()}
+			lu := u.DeepCopy()
+			if err := k.Get(lctx, t, lu, &client.GetOptions{}); err != nil {
 				if kerrors.IsNotFound(err) {
 					return nil, nil
 				}
@@ -326,60 +290,50 @@ func (k *Kubernetes) CreateNamespace(ctx context.Context, namespace string) erro
 			Name: namespace,
 		},
 	}
-	if _, err := k.Cli.CoreV1().Namespaces().Create(ctx, &ns, metav1.CreateOptions{}); err != nil {
+	if err := k.Create(ctx, &ns, &client.CreateOptions{}); err != nil {
 		return err
 	}
 	return nil
+}
+
+func (k *Kubernetes) CreateNamespaceWithLabels(ctx context.Context, namespace string, labels map[string]string) (*corev1.Namespace, error) {
+	ns := corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:   namespace,
+			Labels: labels,
+		},
+	}
+	if err := k.Create(ctx, &ns, &client.CreateOptions{}); err != nil {
+		return nil, err
+	}
+	return &ns, nil
 }
 
 // unstructured
 func (k *Kubernetes) CreateResourceUnstructured(ctx context.Context, u unstructured.Unstructured) error {
-	dri, err := k.BuildClientForResource(ctx, u)
-	if err != nil {
+	if err := k.Create(ctx, &u, &client.CreateOptions{}); err != nil {
 		return err
-	}
-
-	if _, err := dri.Create(ctx, &u, metav1.CreateOptions{}); err != nil {
-		return err
-	}
-	return nil
-}
-
-func (k *Kubernetes) CreateNamespacedResourceUnstructured(ctx context.Context, u unstructured.Unstructured) error {
-	dri, err := k.BuildNamespacedClientForResource(ctx, u, u.GetNamespace())
-	if err != nil {
-		return fmt.Errorf("error building client for resource: %w\n%v", err, u)
-	}
-
-	if _, err := dri.Create(ctx, &u, metav1.CreateOptions{}); err != nil {
-		return fmt.Errorf("error creating resource: %w\n%v", err, u)
 	}
 	return nil
 }
 
 func (k *Kubernetes) DeleteResourceUnstructured(ctx context.Context, u unstructured.Unstructured) error {
-	dri, err := k.BuildClientForResource(ctx, u)
-	if err != nil {
-		return err
-	}
-
-	if err := dri.Delete(ctx, u.GetName(), metav1.DeleteOptions{}); err != nil {
+	if err := k.Delete(ctx, &u, &client.DeleteOptions{}); err != nil {
 		return err
 	}
 	return nil
 }
 
 func (k *Kubernetes) WatchResourceUnstructured(ctx context.Context, u unstructured.Unstructured) (watch.Interface, error) {
-	dri, err := k.BuildClientForResource(ctx, u)
+	fs, err := fields.ParseSelector(fmt.Sprintf("metadata.name=%s", u.GetName()))
 	if err != nil {
 		return nil, err
 	}
 
-	o := metav1.ListOptions{
-		TypeMeta:      metav1.TypeMeta{},
-		FieldSelector: fmt.Sprintf("metadata.name=%s", u.GetName()),
+	o := &client.ListOptions{
+		FieldSelector: fs,
 	}
-	return dri.Watch(ctx, o)
+	return k.Watch(ctx, &u, o)
 }
 
 func (k *Kubernetes) WaitForDeletionOfResourceUnstructured(ctx context.Context, u unstructured.Unstructured) error {

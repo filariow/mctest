@@ -6,14 +6,16 @@ import (
 	"log"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/filariow/mctest/pkg/infra"
 	"github.com/filariow/mctest/pkg/kube"
@@ -59,22 +61,24 @@ func (p *ClusterAPIProvisioner) WaitForProvisionedClusters(ctx context.Context) 
 			}
 
 			for _, cfg := range cfgs {
-				k, err := kube.New(&cfg, scheme.Scheme, true)
+				k, err := kube.New(&cfg, client.Options{Scheme: scheme.Scheme})
 				if err != nil {
 					return err
 				}
 
-				lc, err := k.DiscoveryClient.RESTClient().Get().AbsPath("/livez").DoRaw(ctx)
-				if err != nil {
-					return err
-				}
-				log.Printf("livez called, response is: %v", string(lc))
+				c := infra.NewCluster(k)
 
-				hc, err := k.DiscoveryClient.RESTClient().Get().AbsPath("/healthz").DoRaw(ctx)
+				lc, err := c.Livez(ctx)
 				if err != nil {
 					return err
 				}
-				log.Printf("healthz called, response is: %v", string(hc))
+				log.Printf("livez called successfully, response is: %v", string(lc))
+
+				hc, err := c.Healthz(ctx)
+				if err != nil {
+					return err
+				}
+				log.Printf("healthz called successfully, response is: %v", string(hc))
 			}
 
 			return nil
@@ -94,9 +98,11 @@ func (p *ClusterAPIProvisioner) GetAllAdminKubeconfigs(ctx context.Context) (map
 		sn := fmt.Sprintf("%s-kubeconfig", u.GetName())
 		lctx, lcancel := context.WithTimeout(ctx, 1*time.Minute)
 		defer lcancel()
+
 		cfg, err := poll.DoR(lctx, 10*time.Second, func(ctx context.Context) (*rest.Config, error) {
-			s, err := p.Kubernetes.Cli.CoreV1().Secrets(u.GetNamespace()).Get(ctx, sn, metav1.GetOptions{})
-			if err != nil {
+			s := corev1.Secret{}
+			t := types.NamespacedName{Namespace: u.GetNamespace(), Name: sn}
+			if err := p.Kubernetes.Get(ctx, t, &s, &client.GetOptions{}); err != nil {
 				return nil, err
 			}
 
@@ -117,14 +123,14 @@ func (p *ClusterAPIProvisioner) GetAllAdminKubeconfigs(ctx context.Context) (map
 func (p *ClusterAPIProvisioner) Provision(ctx context.Context) error {
 	// create other resources
 	for _, u := range p.clusterDef {
-		if err := p.Kubernetes.CreateNamespacedResourceUnstructured(ctx, u); err != nil {
+		if err := p.Kubernetes.CreateResourceUnstructured(ctx, u); err != nil {
 			return fmt.Errorf("error creating namespaced ClusterAPI resource:%w\n%v", err, u)
 		}
 	}
 
 	// create clusters
 	for _, u := range p.clusters {
-		if err := p.Kubernetes.CreateNamespacedResourceUnstructured(ctx, u); err != nil {
+		if err := p.Kubernetes.CreateResourceUnstructured(ctx, u); err != nil {
 			return fmt.Errorf("error creating namespaced ClusterAPI Cluster resource:%w\n%v", err, u)
 		}
 	}
