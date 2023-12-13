@@ -59,23 +59,35 @@ func destroyHostResources(ctx context.Context, sc *godog.Scenario, err error) (c
 		return ctx, err
 	}
 
-	// fetch host cluster from context
-	kh, err := infra.ClusterFromContext(ctx)
+	// fetch management cluster from context
+	kh, err := infra.ManagementClusterFromContext(ctx)
 	if err != nil {
 		return ctx, err
 	}
 
-	// delete test namespace from host
+	// build label selector for current scenario
 	r, err := labels.NewRequirement("scenario", selection.Equals, []string{sc.Id})
 	if err != nil {
 		return ctx, err
 	}
 	s := labels.NewSelector().Add(*r)
-	deleteOpts := &client.DeleteAllOfOptions{ListOptions: client.ListOptions{LabelSelector: s}}
-	if errDel := kh.Kubernetes.CRCli.DeleteAllOf(ctx, &corev1.Namespace{}, deleteOpts); errDel != nil {
-		cerr := errors.Join(err, errDel)
-		log.Printf("error destroying host resources: %s", cerr)
+
+	// list all namespaces related to current scenario
+	nn := corev1.NamespaceList{}
+	if errList := kh.CRCli.List(ctx, &nn, &client.ListOptions{LabelSelector: s}); errList != nil {
+		cerr := errors.Join(err, errList)
+		log.Printf("error listing namespaces before destroying: %s", cerr)
 		return ctx, cerr
+
+	}
+
+	// delete all namespaces related to current scenario
+	for _, n := range nn.Items {
+		if errDel := kh.CRCli.Delete(ctx, &n, &client.DeleteOptions{}); errDel != nil {
+			cerr := errors.Join(err, errDel)
+			log.Printf("error destroying namespace %s in management cluster: %s", n.Name, cerr)
+			return ctx, cerr
+		}
 	}
 
 	return ctx, nil

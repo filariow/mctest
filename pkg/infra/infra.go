@@ -18,4 +18,6 @@ type ClusterProvisioner interface {
 	NumClustersProvisionedInProvisionRound() int
 	// Unprovision unprovisions the clusters previously provisioned.
 	Unprovision(ctx context.Context) error
+	// Wait for clusters to be provisioned
+	WaitForProvisionedClusters(ctx context.Context) error
 }

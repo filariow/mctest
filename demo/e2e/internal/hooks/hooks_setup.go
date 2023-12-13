@@ -8,7 +8,6 @@ import (
 	"os"
 	"path"
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/cucumber/godog"
@@ -71,7 +70,8 @@ func injectProvisioners(ctx context.Context, s *godog.Scenario) (context.Context
 }
 
 // injects the configured cluster into context
-func injectCluster(ctx context.Context, sc *godog.Scenario) (context.Context, error) {
+func injectManagementCluster(ctx context.Context, sc *godog.Scenario) (context.Context, error) {
+	// build cluster clients
 	cfg, err := kube.GetRESTConfig()
 	if err != nil {
 		return ctx, err
@@ -83,7 +83,11 @@ func injectCluster(ctx context.Context, sc *godog.Scenario) (context.Context, er
 	}
 
 	h := infra.NewCluster(k)
-	return einfra.ClusterIntoContext(ctx, *h), nil
+
+	// inject management cluster
+	ctx = einfra.ManagementClusterIntoContext(ctx, *h)
+	ctx = einfra.ClusterIntoContext(ctx, *h)
+	return ctx, nil
 }
 
 // if scenario's tag contains @dedicated-cluster, this hook will provision a dedicated cluster
@@ -91,7 +95,12 @@ func injectDedicatedClusterIfRequired(ctx context.Context, sc *godog.Scenario) (
 	// dedicated host not requested, inject management cluster as the host cluster
 	if !isDedicatedClusterRequired(sc) {
 		log.Printf("dedicated cluster required, provisioning dedicated cluster")
-		return provisionAndInjectDedicatedCluster(ctx, sc)
+		ctx, err := provisionAndInjectDedicatedCluster(ctx, sc)
+		if err != nil {
+			return ctx, err
+		}
+
+		return prepareScenarioNamespaces(ctx, sc)
 	}
 
 	log.Printf("dedicated cluster not required")
@@ -103,31 +112,24 @@ func provisionAndInjectDedicatedCluster(ctx context.Context, sc *godog.Scenario)
 	// TODO: is this needed for this demo?
 
 	// retrieve provisioner
-	pn := defaultClusterProvisioner
-	// find tag with prefix matching the tagHostProvisionerPrefix
-	i := slices.IndexFunc(
-		sc.Tags,
-		func(e *messages.PickleTag) bool {
-			return strings.HasPrefix(e.Name, tagClusterProvisionerPrefix)
-		})
-	if i != -1 {
-		pn = strings.TrimPrefix(sc.Tags[i].Name, tagClusterProvisionerPrefix)
-	}
-
 	hostProvisioners, err := einfra.ProvisionersFromContext(ctx)
 	if err != nil {
 		return ctx, econtext.ErrKeyNotFound
 	}
 
-	p, ok := (*hostProvisioners)[pn]
+	p, ok := (*hostProvisioners)[defaultClusterProvisioner]
 	if !ok {
 		return ctx, fmt.Errorf(
 			"host provisioner %s for scenario %s not found in registered ones: %v",
-			pn, sc.Name, *hostProvisioners)
+			defaultClusterProvisioner, sc.Name, *hostProvisioners)
 	}
 
 	// provision host cluster
 	if err := p.Provision(ctx); err != nil {
+		return ctx, err
+	}
+
+	if err := p.WaitForProvisionedClusters(ctx); err != nil {
 		return ctx, err
 	}
 

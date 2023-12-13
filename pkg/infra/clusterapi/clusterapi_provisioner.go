@@ -3,6 +3,7 @@ package clusterapi
 import (
 	"context"
 	"fmt"
+	"log"
 	"time"
 
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
@@ -10,6 +11,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/watch"
+	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 
@@ -46,6 +48,42 @@ func NewClusterAPIProvisioner(
 		clusterDef: mm,
 		suffix:     suffix,
 	}
+}
+
+func (p *ClusterAPIProvisioner) WaitForProvisionedClusters(ctx context.Context) error {
+	return poll.Do(ctx, 5*time.Second, func(ctx context.Context) error {
+		if err := func() error {
+			cfgs, err := p.GetAllAdminKubeconfigs(ctx)
+			if err != nil {
+				return err
+			}
+
+			for _, cfg := range cfgs {
+				k, err := kube.New(&cfg, scheme.Scheme, true)
+				if err != nil {
+					return err
+				}
+
+				lc, err := k.DiscoveryClient.RESTClient().Get().AbsPath("/livez").DoRaw(ctx)
+				if err != nil {
+					return err
+				}
+				log.Printf("livez called, response is: %v", string(lc))
+
+				hc, err := k.DiscoveryClient.RESTClient().Get().AbsPath("/healthz").DoRaw(ctx)
+				if err != nil {
+					return err
+				}
+				log.Printf("healthz called, response is: %v", string(hc))
+			}
+
+			return nil
+		}(); err != nil {
+			log.Printf("error checking if cluster is provisioned: %v", err)
+			return err
+		}
+		return nil
+	})
 }
 
 // returns the kubeconfig for a given provisioned cluster

@@ -9,7 +9,7 @@
 [ -z "$MAKE" ] && export MAKE="make"
 [ -z "$MAKE_ARGS" ] && export MAKE_ARGS="-j4"
 
-SHOW_IMG="mctest-show:test-latest"
+SHOW_IMG="mctest/show:test-latest"
 TMP_FOLDER="$SCRIPT_DIR/../../.tmp"
 TMP_PREBASE_FOLDER="$TMP_FOLDER/tests/pre"
 
@@ -51,7 +51,7 @@ init()
     # prepare, test base folder and build images
     print_section "preparing manifests and images"
     { \
-        $MAKE --directory demo/show kustomize generate manifests && \
+        $MAKE --directory "$SCRIPT_DIR/../../show" kustomize generate manifests && \
             prepare_prebase_folder && \
             build_images; \
     } || { \

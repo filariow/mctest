@@ -11,7 +11,8 @@ const (
 	// provisioners
 	keyProvisioners string = "provisioners"
 	// clusters
-	keyCluster string = "cluster"
+	keyCluster           string = "cluster"
+	keyManagementCluster string = "management-cluster"
 	// namespaces
 	keyScenarioNamespace          string = "scenario-namespace"
 	keyAuxiliaryScenarioNamespace string = "auxiliary-scenario-namespace"
@@ -31,6 +32,18 @@ func ProvisionersFromContextOrDie(ctx context.Context) map[string]pinfra.Cluster
 }
 
 // kubes
+func ManagementClusterIntoContext(ctx context.Context, value pinfra.Cluster) context.Context {
+	return econtext.IntoContext(ctx, keyManagementCluster, value)
+}
+
+func ManagementClusterFromContext(ctx context.Context) (*pinfra.Cluster, error) {
+	return econtext.FromContext[pinfra.Cluster](ctx, keyManagementCluster)
+}
+
+func ManagementClusterFromContextOrDie(ctx context.Context) pinfra.Cluster {
+	return econtext.FromContextOrDie[pinfra.Cluster](ctx, keyManagementCluster)
+}
+
 func ClusterIntoContext(ctx context.Context, value pinfra.Cluster) context.Context {
 	return econtext.IntoContext(ctx, keyCluster, value)
 }

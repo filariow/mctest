@@ -1,7 +1,7 @@
 apiVersion: cluster.x-k8s.io/v1beta1
 kind: ClusterClass
 metadata:
-  name: default
+  name: mctest-default
   namespace: default
 spec:
   controlPlane:
@@ -9,16 +9,16 @@ spec:
       ref:
         apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
         kind: DockerMachineTemplate
-        name: default-control-plane
+        name: control-plane
     ref:
       apiVersion: controlplane.cluster.x-k8s.io/v1beta1
       kind: KubeadmControlPlaneTemplate
-      name: default-control-plane
+      name: control-plane
   infrastructure:
     ref:
       apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
       kind: DockerClusterTemplate
-      name: default-cluster
+      name: cluster
   patches:
   - definitions:
     - jsonPatches:
@@ -75,6 +75,19 @@ spec:
         kind: DockerMachineTemplate
         matchResources:
           machineDeploymentClass:
+            names:
+            - default-worker
+    - jsonPatches:
+      - op: add
+        path: /spec/template/spec/template/customImage
+        valueFrom:
+          template: |
+            kindest/node:{{ .builtin.machinePool.version | replace "+" "_" }}
+      selector:
+        apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+        kind: DockerMachinePoolTemplate
+        matchResources:
+          machinePoolClass:
             names:
             - default-worker
     - jsonPatches:
@@ -197,24 +210,39 @@ spec:
           ref:
             apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
             kind: KubeadmConfigTemplate
-            name: default-default-worker-bootstraptemplate
+            name: default-worker-bootstraptemplate
         infrastructure:
           ref:
             apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
             kind: DockerMachineTemplate
-            name: default-default-worker-machinetemplate
+            name: default-worker-machinetemplate
+    machinePools:
+    - class: default-worker
+      template:
+        bootstrap:
+          ref:
+            apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+            kind: KubeadmConfigTemplate
+            name: default-worker-bootstraptemplate
+        infrastructure:
+          ref:
+            apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+            kind: DockerMachinePoolTemplate
+            name: default-worker-machinepooltemplate
 ---
 apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
 kind: DockerClusterTemplate
 metadata:
-  name: default-cluster
+  name: cluster
   namespace: default
-spec: {}
+spec:
+  template:
+    spec: {}
 ---
 apiVersion: controlplane.cluster.x-k8s.io/v1beta1
 kind: KubeadmControlPlaneTemplate
 metadata:
-  name: default-control-plane
+  name: control-plane
   namespace: default
 spec:
   template:
@@ -229,7 +257,7 @@ spec:
             - host.docker.internal
           controllerManager:
             extraArgs:
-              enablepath-provisioner: "true"
+              enable-hostpath-provisioner: "true"
         initConfiguration:
           nodeRegistration: {}
         joinConfiguration:
@@ -238,7 +266,7 @@ spec:
 apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
 kind: DockerMachineTemplate
 metadata:
-  name: default-control-plane
+  name: control-plane
   namespace: default
 spec:
   template:
@@ -247,15 +275,12 @@ spec:
       - containerPath: /var/run/docker.sock
         hostPath: /var/run/docker.sock
       preLoadImages:
-      - exuma/balancer:test-latest
-      - exuma/cluster-metrics:test-latest
-      - exuma/core:test-latest
-      - exuma/space-foundation:test-latest
+      - mctest/show:test-latest
 ---
 apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
 kind: DockerMachineTemplate
 metadata:
-  name: default-default-worker-machinetemplate
+  name: default-worker-machinetemplate
   namespace: default
 spec:
   template:
@@ -264,10 +289,20 @@ spec:
       - containerPath: /var/run/docker.sock
         hostPath: /var/run/docker.sock
 ---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: DockerMachinePoolTemplate
+metadata:
+  name: default-worker-machinepooltemplate
+  namespace: default
+spec:
+  template:
+    spec:
+      template: {}
+---
 apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
 kind: KubeadmConfigTemplate
 metadata:
-  name: default-default-worker-bootstraptemplate
+  name: default-worker-bootstraptemplate
   namespace: default
 spec:
   template:
@@ -278,7 +313,7 @@ spec:
 apiVersion: cluster.x-k8s.io/v1beta1
 kind: Cluster
 metadata:
-  name: capi
+  name: capi-kind-default
   namespace: default
 spec:
   clusterNetwork:
@@ -290,7 +325,7 @@ spec:
       cidrBlocks:
       - 10.128.0.0/12
   topology:
-    class: default
+    class: mctest-default
     controlPlane:
       metadata: {}
       replicas: 1
@@ -312,4 +347,8 @@ spec:
       machineDeployments:
       - class: default-worker
         name: md-0
-        replicas: 1
+        replicas: 0
+      machinePools:
+      - class: default-worker
+        name: mp-0
+        replicas: 0

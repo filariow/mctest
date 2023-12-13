@@ -13,16 +13,16 @@ func injectHookSetup(ctx *godog.ScenarioContext) {
 	// create temp folder for scenario
 	ctx.Before(hookPrepareScenarioTestFolder)
 
-	// handle dedicated host request
-	ctx.Before(injectCluster)
+	// inject ClusterAPI's management cluster request
+	ctx.Before(injectManagementCluster)
 
-	// set and create the ContextNamespace on Host Cluster
+	// set and create the ContextNamespace on ClusterAPI's Cluster
 	ctx.Before(prepareScenarioNamespaces)
 
 	// inject provisioners
 	ctx.Before(injectProvisioners)
 
-	// handle dedicated host request
+	// handle dedicated cluster request
 	ctx.Before(injectDedicatedClusterIfRequired)
 
 	// set timeout for single test
