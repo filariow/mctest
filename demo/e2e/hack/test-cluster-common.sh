@@ -14,6 +14,21 @@ ROOT_DIR="$(realpath $SCRIPT_DIR/../../../)"
 TMP_FOLDER="$ROOT_DIR/demo/.tmp"
 TMP_PREBASE_FOLDER="$TMP_FOLDER/tests/pre"
 
+check_dependencies()
+{
+    err=0
+    for i in "$@"
+    do
+        if ! command -v "$i" > /dev/null
+        then
+            printf "please install '%s'\n" "$i"
+            err=$((err+1))
+        fi
+    done
+
+    [ "$err" -eq "0" ] || exit 1
+}
+
 prepare_prebase_folder()
 {
     chmod -R 0755 "$TMP_FOLDER" 2> /dev/null || true

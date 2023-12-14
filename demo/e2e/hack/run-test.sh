@@ -20,6 +20,8 @@ run_tests()
         --godog.concurrency "$GODOG_CONCURRENCY"
 }
 
+check_dependencies "clusterctl" "make" "go" "bash" "rsync" "kind" "kubectl"
+
 go -C "$TESTS_DIR" vet ./... && \
     bash -c "${SCRIPT_DIR}/start-or-clean-kind.sh" && \
     run_tests
