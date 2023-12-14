@@ -1,38 +1,49 @@
----
-title: Tests workflow
----
 flowchart TD
+  subgraph Workflow
   %% nodes
-  start([demo/e2e/hack/run-test.sh])
-  buildImages[🧰 Build images]
-  createManagementCluster["🧰 Create or Cleanup 
-    Management Cluster (ClusterAPI)"]
-  preFolder[🧰 Prepare 'demo/.tmp/tests/pre' tests folder]
-  prepareBaseTestFolder[Prepare 'demo/.tmp/tests/base' test folder]
-  prepareRunTestFolder[🪝 Prepare run's folder 'demo/.tmp/tests/runs/$SCENARIO_ID']
-  runInParallel[[Run in parallel]]
-  prepareNamespaceInManagementCluster[🪝 Prepare auxiliary namespace in Management cluster]
-  injectManagementClusterInContext[🪝 Inject Management cluster in context]
-  injectClusterAPIProvisionerInContext["🪝 Inject cluster provisioner (ClusterAPI) in context"]
-  isDedicatedClusterRequired1{{Is Dedicated Cluster required?}}
-  injectManagementAsDedicatedInContext["🪝 Create scenario namespace in Management cluster"]
-  injectManagementClientInContext["🪝 Inject namespace-scoped client in context"]
-  createDedicatedCluster[🪝 Create dedicated cluster]
-  injectDedicatedCluster[🪝 Inject cluster-scoped client in context]
-  setScenarioTimeout[🪝 set timeout for scenario]
-  runScenario[[Run Scenario]]
-  deleteDedicatedCluster[🪝 Unprovision Dedicated Clusters if any]
-  deleteManagementClusterNamespace[🪝 Delete Scenario Namespaces in Management Cluster]
-  waitTests[[Wait for all scenarios to complete]]
-  finish(((end)))
+    
+    start(((start)))
+    runTest([🧰 demo/e2e/hack/run-test.sh])
+    buildImages[🧰 Build images]
+    createManagementCluster["🧰 Create or Cleanup 
+      Management Cluster (ClusterAPI)"]
+    preFolder[🧰 Prepare 'demo/.tmp/tests/pre' tests folder]
+    runGoTest[🧰 Run go test]
+    prepareBaseTestFolder[🧪 Prepare 'demo/.tmp/tests/base' test folder]
+    prepareRunTestFolder[🧪🪝 Prepare run's folder 'demo/.tmp/tests/runs/$SCENARIO_ID']
+    runInParallel[[🧪 Run in parallel]]
+    prepareNamespaceInManagementCluster[🧪🪝 Prepare auxiliary namespace in Management cluster]
+    injectManagementClusterInContext[🧪🪝 Inject Management cluster in context]
+    injectClusterAPIProvisionerInContext["🧪🪝 Inject cluster provisioner (ClusterAPI) in context"]
+    isDedicatedClusterRequired1{{🧪 Is Dedicated Cluster required?}}
+    injectManagementAsDedicatedInContext["🧪🪝 Create scenario namespace in Management cluster"]
+    injectManagementClientInContext["🧪🪝 Inject namespace-scoped client in context"]
+    createDedicatedCluster[🧪🪝 Create dedicated cluster]
+    injectDedicatedCluster[🧪🪝 Inject cluster-scoped client in context]
+    setScenarioTimeout[🧪🪝 set timeout for scenario]
+    runScenario[[🧪 Run Scenario]]
+    deleteDedicatedCluster[🧪🪝 Unprovision Dedicated Clusters if any]
+    deleteManagementClusterNamespace[🧪🪝 Delete Scenario Namespaces in Management Cluster]
+    waitTests[[🧪 Wait for all scenarios to complete]]
+    finish(((end)))
+  end
+
+  subgraph Legend
+    direction LR
+    bashScript["🧰 scripts in demo/e2e/hack"]
+    goTest["🧪 go test"]
+    godogHook["🧪🪝 godog's hook"]
+  end
 
   %% links
-  start --> buildImages
-  start --> createManagementCluster
-  start --> preFolder
-  buildImages --> prepareBaseTestFolder
-  preFolder --> prepareBaseTestFolder
-  createManagementCluster --> prepareBaseTestFolder
+  start --> runTest
+  runTest --> buildImages
+  runTest --> createManagementCluster
+  runTest --> preFolder
+  buildImages --> runGoTest
+  preFolder --> runGoTest
+  createManagementCluster --> runGoTest
+  runGoTest --> prepareBaseTestFolder
   prepareBaseTestFolder --> runInParallel
   runInParallel --> prepareRunTestFolder
   prepareRunTestFolder --> injectManagementClusterInContext
