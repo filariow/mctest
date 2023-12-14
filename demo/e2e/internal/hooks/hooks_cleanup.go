@@ -18,9 +18,9 @@ import (
 )
 
 func cancelRunContext(ctx context.Context, _ *godog.Scenario, err error) (context.Context, error) {
-	cancel, err := testrun.TimeoutContextCancelFromContext(ctx)
-	if err != nil {
-		return ctx, err
+	cancel, cerr := testrun.TimeoutContextCancelFromContext(ctx)
+	if cerr != nil {
+		return ctx, errors.Join(err, cerr)
 	}
 	cancel()
 

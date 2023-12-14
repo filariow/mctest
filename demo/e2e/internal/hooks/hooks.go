@@ -30,6 +30,9 @@ func injectHookSetup(ctx *godog.ScenarioContext) {
 }
 
 func injectHookCleanup(ctx *godog.ScenarioContext) {
+	// cancel run context
+	ctx.After(cancelRunContext)
+
 	// unprovision clusters
 	ctx.After(unprovisionClusters)
 
@@ -38,7 +41,4 @@ func injectHookCleanup(ctx *godog.ScenarioContext) {
 
 	// cleanup temp folder
 	ctx.After(hookDestroyScenarioTestFolder)
-
-	// cancel run context
-	ctx.After(cancelRunContext)
 }
