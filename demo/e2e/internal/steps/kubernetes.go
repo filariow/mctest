@@ -36,6 +36,7 @@ func RegisterStepFuncsKubernetes(ctx *godog.ScenarioContext) {
 	ctx.Step(`^Resources don't exist:$`, ResourcesNotExist)
 
 	ctx.Step(`^Operator "([\w]+[\w-]*)" is installed$`, DeployOperator)
+	ctx.Step(`^Operator "([\w]+[\w-]*)" is installed in namespace "([\w]+[\w-]*)"$`, DeployOperatorInNamespace)
 }
 
 func ResourcesExist(ctx context.Context, spec string) error {
@@ -122,6 +123,10 @@ func ResourcesAreUpdated(ctx context.Context, spec string) error {
 }
 
 func ResourcesAreCreated(ctx context.Context, spec string) error {
+	return resourcesAreCreated(ctx, spec, nil)
+}
+
+func resourcesAreCreated(ctx context.Context, spec string, namespace *string) error {
 	k := infra.ScenarioClusterFromContextOrDie(ctx)
 	uu, err := k.ParseResources(ctx, spec)
 	if err != nil {
@@ -129,8 +134,13 @@ func ResourcesAreCreated(ctx context.Context, spec string) error {
 	}
 
 	for _, u := range uu {
+		lu := u.DeepCopy()
+		if namespace != nil {
+			lu.SetNamespace(*namespace)
+		}
+
 		if err := poll.DoWithTimeout(ctx, 5*time.Second, 1*time.Minute, func(ctx context.Context) error {
-			return k.Create(ctx, u.DeepCopy(), &client.CreateOptions{})
+			return k.Create(ctx, lu, &client.CreateOptions{})
 		}); err != nil {
 			return err
 		}
@@ -167,12 +177,46 @@ func DeployOperator(ctx context.Context, operator string) error {
 	}
 
 	// read deployment manifests
-	opd := path.Join(tf, "config", "default", operator)
-	op, err := os.ReadFile(opd)
-	if err != nil {
-		return err
+	applyFile := func(fname string) error {
+		opd := path.Join(tf, "config", "default", fname)
+		op, err := os.ReadFile(opd)
+		if err != nil {
+			return err
+		}
+
+		// Apply deployment resources
+		return ResourcesAreCreated(ctx, string(op))
 	}
 
-	// Apply deployment resources
-	return ResourcesAreCreated(ctx, string(op))
+	if err := applyFile(fmt.Sprintf("%s-rbac.yaml", operator)); err != nil {
+		return err
+	}
+	return applyFile(fmt.Sprintf("%s.yaml", operator))
+}
+
+func DeployOperatorInNamespace(ctx context.Context, operator, namespace string) error {
+	tf, err := testrun.TestFolderFromContext(ctx)
+	if err != nil {
+		return errors.Join(testrun.ErrTestFolderNotFound, err)
+	}
+
+	// read deployment manifests
+	applyFile := func(fname string) error {
+		opd := path.Join(tf, "config", "default", fname)
+		op, err := os.ReadFile(opd)
+		if err != nil {
+			return err
+		}
+
+		// Apply deployment resources
+		if err := resourcesAreCreated(ctx, string(op), &namespace); err != nil {
+			return fmt.Errorf("%w: creating resource in namespace %s: %s ", err, namespace, string(op))
+		}
+		return nil
+	}
+
+	if err := applyFile(fmt.Sprintf("%s-rbac.yaml", operator)); err != nil {
+		return err
+	}
+	return applyFile(fmt.Sprintf("%s.yaml", operator))
 }

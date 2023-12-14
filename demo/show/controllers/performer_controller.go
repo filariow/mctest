@@ -39,9 +39,9 @@ type PerformerReconciler struct {
 	Scheme *runtime.Scheme
 }
 
-//+kubebuilder:rbac:groups=demo.mctest.io,resources=performers,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=demo.mctest.io,resources=performers/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=demo.mctest.io,resources=performers/finalizers,verbs=update
+//+kubebuilder:rbac:namespace=system,groups=demo.mctest.io,resources=performers,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:namespace=system,groups=demo.mctest.io,resources=performers/status,verbs=get;update;patch
+//+kubebuilder:rbac:namespace=system,groups=demo.mctest.io,resources=performers/finalizers,verbs=update
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.

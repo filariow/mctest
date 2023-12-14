@@ -17,11 +17,11 @@ run_tests()
 
     go -C "$TESTS_DIR" test -v \
         "$GODOG_TAGS" \
-        --godog.concurrency "$GODOG_CONCURRENCY"
+        --godog.concurrency "$GODOG_CONCURRENCY" "$@"
 }
 
 check_dependencies "clusterctl" "make" "go" "bash" "rsync" "kind" "kubectl"
 
 go -C "$TESTS_DIR" vet ./... && \
     bash -c "${SCRIPT_DIR}/start-or-clean-kind.sh" && \
-    run_tests
+    run_tests "$@"
