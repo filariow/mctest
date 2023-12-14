@@ -17,11 +17,13 @@ import (
 func RegisterStepFuncsKubernetes(ctx *godog.ScenarioContext) {
 	ctx.Step(`^Resource is created:$`, ResourcesAreCreated)
 	ctx.Step(`^Resources are created:$`, ResourcesAreCreated)
+	ctx.Step(`^Resource can not be created:$`, ResourcesCanNotBeCreated)
 
 	ctx.Step(`^Resource is updated:$`, ResourcesAreUpdated)
 	ctx.Step(`^Resources are updated:$`, ResourcesAreUpdated)
 
 	ctx.Step(`^Resource exists:$`, ResourcesExist)
+	ctx.Step(`^Resource exists in scenario namespace:$`, ResourcesExist)
 	ctx.Step(`^Resources exist:$`, ResourcesExist)
 
 	ctx.Step(`^Resource doesn't exist:$`, ResourcesNotExist)
@@ -126,4 +128,26 @@ func ResourcesAreCreated(ctx context.Context, spec string) error {
 		}
 		return nil
 	})
+}
+
+func ResourcesCanNotBeCreated(ctx context.Context, spec string) error {
+	k := infra.ClusterFromContextOrDie(ctx)
+	uu, err := k.ParseResources(ctx, spec)
+	if err != nil {
+		return err
+	}
+
+	for _, u := range uu {
+		lu := u.DeepCopy()
+		if err := k.Create(ctx, lu, &client.CreateOptions{}); err == nil {
+			ld, err := lu.MarshalJSON()
+			if err != nil {
+				return fmt.Errorf(
+					"expected resource not to be created. Created: [ ApiVersion=%s, Kind=%s, Namespace=%s, Name=%s ]. Error marshaling as json: %w",
+					lu.GetAPIVersion(), lu.GetKind(), lu.GetNamespace(), lu.GetName(), err)
+			}
+			return fmt.Errorf("expected resource not to be created. Created: %s", ld)
+		}
+	}
+	return nil
 }

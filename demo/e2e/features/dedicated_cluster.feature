@@ -1,25 +1,23 @@
-Feature: Dummy
+@dedicated-cluster
+Feature: Resource creation in Dedicated Cluster
 
-    Scenario: Resource is created
+    Scenario: Cluster-scoped Resource can be created
         When Resource is created:
         """
             apiVersion: v1
-            kind: Secret
+            kind: Namespace
             metadata:
-                name: host-operator-controller
-                namespace: will-be-overwritten
+                name: here-i-can
         """
         Then Resource exists:
         """
             apiVersion: v1
-            kind: Secret
+            kind: Namespace
             metadata:
-                name: host-operator-controller
-                namespace: will-be-overwritten
+                name: here-i-can
         """
 
-    @dedicated-cluster
-    Scenario: Resource is created
+    Scenario: Namespaced-scoped can be created
         Given Resource is created:
         """
             apiVersion: v1
