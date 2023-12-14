@@ -10,25 +10,29 @@
 [ -z "$MAKE_ARGS" ] && export MAKE_ARGS="-j4"
 
 SHOW_IMG="mctest/show:test-latest"
-TMP_FOLDER="$SCRIPT_DIR/../../.tmp"
+ROOT_DIR="$(realpath $SCRIPT_DIR/../../../)"
+TMP_FOLDER="$ROOT_DIR/demo/.tmp"
 TMP_PREBASE_FOLDER="$TMP_FOLDER/tests/pre"
 
 prepare_prebase_folder()
 {
-    chmod -R 0755 "$TMP_FOLDER" || true
-    rm -rf "$TMP_FOLDER" || true
+    chmod -R 0755 "$TMP_FOLDER" 2> /dev/null || true
+    rm -rf "$TMP_FOLDER" 2> /dev/null || true
 
     # create base folders
-    mkdir -p "$TMP_FOLDER" "$TMP_PREBASE_FOLDER/config/default" || return 1
+    mkdir -p \
+        "$TMP_FOLDER" \
+        "$TMP_PREBASE_FOLDER/config/default" \
+        "$TMP_PREBASE_FOLDER/demo" || return 1
 
     # copy code to temp folder
-    { mkdir "$TMP_PREBASE_FOLDER/demo" && rsync  \
+    ( rsync \
         --info=progress2 \
         --recursive \
         --chmod=0755 \
         --chown="$(id -u):$(id -g)" \
-        demo/e2e demo/show \
-        "$TMP_PREBASE_FOLDER/demo"; } || return 1
+        "$ROOT_DIR/demo/e2e" "$ROOT_DIR/demo/show" \
+        "$TMP_PREBASE_FOLDER/demo"; ) || return 1
 
     # build default manifests
     ( cd "$TMP_PREBASE_FOLDER/demo/show/config" && \
@@ -51,7 +55,7 @@ init()
     # prepare, test base folder and build images
     print_section "preparing manifests and images"
     { \
-        $MAKE --directory "$SCRIPT_DIR/../../show" kustomize generate manifests && \
+        $MAKE --directory "$ROOT_DIR/demo/show" kustomize generate manifests && \
             prepare_prebase_folder && \
             build_images; \
     } || { \
