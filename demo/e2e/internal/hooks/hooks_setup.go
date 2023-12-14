@@ -162,7 +162,7 @@ func prepareDedicatedTestEnvironment(ctx context.Context, sc *godog.Scenario) (c
 	}
 
 	// inject into context
-	return einfra.ClusterIntoContext(ctx, k), err
+	return einfra.ScenarioClusterIntoContext(ctx, k), err
 }
 
 func prepareTestEnvironmentOnManagementCluster(ctx context.Context, sc *godog.Scenario) (context.Context, error) {
@@ -183,7 +183,7 @@ func prepareTestEnvironmentOnManagementCluster(ctx context.Context, sc *godog.Sc
 	}
 
 	// update host cluster into context
-	return einfra.ClusterIntoContext(ctx, nk), nil
+	return einfra.ScenarioClusterIntoContext(ctx, nk), nil
 }
 
 func createTestNamespace(ctx context.Context, cluster kube.Client, scenarioId string) (*corev1.Namespace, error) {

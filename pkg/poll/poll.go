@@ -36,9 +36,9 @@ func DoRWithTimeout[R any](ctx context.Context, frequency, timeout time.Duration
 	return DoR[R](tctx, frequency, doFunc)
 }
 
-func DoR[R any](ctx context.Context, interval time.Duration, doFunc func(context.Context) (R, error)) (R, error) {
+func DoR[R any](ctx context.Context, frequency time.Duration, doFunc func(context.Context) (R, error)) (R, error) {
 	errs := []error{}
-	cr, ce := DoRC[R](ctx, interval, doFunc)
+	cr, ce := DoRC[R](ctx, frequency, doFunc)
 	for {
 		select {
 		case err, ok := <-ce:

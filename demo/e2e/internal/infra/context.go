@@ -45,15 +45,15 @@ func ManagementClusterFromContextOrDie(ctx context.Context) kube.Client {
 	return econtext.FromContextOrDieInterface[kube.Client](ctx, keyManagementCluster)
 }
 
-func ClusterIntoContext(ctx context.Context, value kube.Client) context.Context {
+func ScenarioClusterIntoContext(ctx context.Context, value kube.Client) context.Context {
 	return econtext.IntoContextInterface(ctx, keyCluster, value)
 }
 
-func ClusterFromContext(ctx context.Context) (kube.Client, error) {
+func ScenarioClusterFromContext(ctx context.Context) (kube.Client, error) {
 	return econtext.FromContextInterface[kube.Client](ctx, keyCluster)
 }
 
-func ClusterFromContextOrDie(ctx context.Context) kube.Client {
+func ScenarioClusterFromContextOrDie(ctx context.Context) kube.Client {
 	return econtext.FromContextOrDieInterface[kube.Client](ctx, keyCluster)
 }
 

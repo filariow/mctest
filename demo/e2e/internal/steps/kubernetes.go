@@ -32,7 +32,7 @@ func RegisterStepFuncsKubernetes(ctx *godog.ScenarioContext) {
 
 func ResourcesExist(ctx context.Context, spec string) error {
 	return poll.DoWithTimeout(ctx, time.Second, 10*time.Second, func(ctx context.Context) error {
-		k := infra.ClusterFromContextOrDie(ctx)
+		k := infra.ScenarioClusterFromContextOrDie(ctx)
 		uu, err := k.ParseResources(ctx, spec)
 		if err != nil {
 			return err
@@ -54,7 +54,7 @@ func ResourcesNotExist(ctx context.Context, spec string) error {
 	ctx, cancel := context.WithTimeout(ctx, 1*time.Minute)
 	defer cancel()
 
-	k := infra.ClusterFromContextOrDie(ctx)
+	k := infra.ScenarioClusterFromContextOrDie(ctx)
 	uu, err := k.ParseResources(ctx, spec)
 	if err != nil {
 		return err
@@ -91,7 +91,7 @@ func ResourcesAreUpdated(ctx context.Context, spec string) error {
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
 
-	k := infra.ClusterFromContextOrDie(ctx)
+	k := infra.ScenarioClusterFromContextOrDie(ctx)
 	uu, err := k.ParseResources(ctx, spec)
 	if err != nil {
 		return err
@@ -115,7 +115,7 @@ func ResourcesAreUpdated(ctx context.Context, spec string) error {
 
 func ResourcesAreCreated(ctx context.Context, spec string) error {
 	return poll.DoWithTimeout(ctx, 5*time.Second, 1*time.Minute, func(ctx context.Context) error {
-		k := infra.ClusterFromContextOrDie(ctx)
+		k := infra.ScenarioClusterFromContextOrDie(ctx)
 		uu, err := k.ParseResources(ctx, spec)
 		if err != nil {
 			return err
@@ -131,7 +131,7 @@ func ResourcesAreCreated(ctx context.Context, spec string) error {
 }
 
 func ResourcesCanNotBeCreated(ctx context.Context, spec string) error {
-	k := infra.ClusterFromContextOrDie(ctx)
+	k := infra.ScenarioClusterFromContextOrDie(ctx)
 	uu, err := k.ParseResources(ctx, spec)
 	if err != nil {
 		return err
