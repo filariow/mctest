@@ -5,13 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"os"
-	"path"
 	"strings"
 	"time"
 
 	"github.com/filariow/mctest/pkg/poll"
-	"github.com/filariow/mctest/pkg/testrun"
 	corev1 "k8s.io/api/core/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -129,43 +126,6 @@ func (k *Kubernetes) Livez(ctx context.Context) ([]byte, error) {
 
 func (k *Kubernetes) Healthz(ctx context.Context) ([]byte, error) {
 	return k.DiscoveryClient().RESTClient().Get().AbsPath("/healthz").DoRaw(ctx)
-}
-
-// TODO: remove hard constraints on path
-func (k *Kubernetes) DeployOperatorInNamespace(ctx context.Context, opPath string, ns string) error {
-	tf, err := testrun.TestFolderFromContext(ctx)
-	if err != nil {
-		return errors.Join(testrun.ErrTestFolderNotFound, err)
-	}
-
-	// read deployment manifests
-	opd := path.Join(tf, "config", "default", opPath)
-	op, err := os.ReadFile(opd)
-	if err != nil {
-		return err
-	}
-
-	// Apply deployment resources
-	if err := poll.Do(ctx, 10*time.Second, func(ctx context.Context) error {
-		uu, err := k.ParseResources(ctx, string(op))
-		if err != nil {
-			return err
-		}
-
-		for _, u := range uu {
-			if u.GetKind() == "Namespace" {
-				continue
-			}
-			u.SetNamespace(ns)
-			if err := k.Create(ctx, &u, &client.CreateOptions{}); err != nil {
-				return err
-			}
-		}
-		return nil
-	}); err != nil {
-		return err
-	}
-	return nil
 }
 
 func (k *Kubernetes) ParseResources(ctx context.Context, spec string) ([]unstructured.Unstructured, error) {

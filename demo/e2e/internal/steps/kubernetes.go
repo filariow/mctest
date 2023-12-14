@@ -2,12 +2,16 @@ package steps
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"os"
+	"path"
 	"time"
 
 	"github.com/cucumber/godog"
 	"github.com/filariow/mctest/demo/e2e/internal/infra"
 	"github.com/filariow/mctest/pkg/poll"
+	"github.com/filariow/mctest/pkg/testrun"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
@@ -30,6 +34,8 @@ func RegisterStepFuncsKubernetes(ctx *godog.ScenarioContext) {
 
 	ctx.Step(`^Resource doesn't exist:$`, ResourcesNotExist)
 	ctx.Step(`^Resources don't exist:$`, ResourcesNotExist)
+
+	ctx.Step(`^Operator "([\w]+[\w-]*)" is installed$`, DeployOperator)
 }
 
 func ResourcesExist(ctx context.Context, spec string) error {
@@ -152,4 +158,21 @@ func ResourcesCanNotBeCreated(ctx context.Context, spec string) error {
 		}
 	}
 	return nil
+}
+
+func DeployOperator(ctx context.Context, operator string) error {
+	tf, err := testrun.TestFolderFromContext(ctx)
+	if err != nil {
+		return errors.Join(testrun.ErrTestFolderNotFound, err)
+	}
+
+	// read deployment manifests
+	opd := path.Join(tf, "config", "default", operator)
+	op, err := os.ReadFile(opd)
+	if err != nil {
+		return err
+	}
+
+	// Apply deployment resources
+	return ResourcesAreCreated(ctx, string(op))
 }
