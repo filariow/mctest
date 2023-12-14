@@ -29,10 +29,7 @@ func RegisterStepFuncsKubernetes(ctx *godog.ScenarioContext) {
 }
 
 func ResourcesExist(ctx context.Context, spec string) error {
-	lctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-
-	return poll.Do(lctx, time.Second, func(cctx context.Context) error {
+	return poll.DoWithTimeout(ctx, time.Second, 10*time.Second, func(ctx context.Context) error {
 		k := infra.ClusterFromContextOrDie(ctx)
 		uu, err := k.ParseResources(ctx, spec)
 		if err != nil {
@@ -52,60 +49,61 @@ func ResourcesExist(ctx context.Context, spec string) error {
 }
 
 func ResourcesNotExist(ctx context.Context, spec string) error {
-	lctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 1*time.Minute)
 	defer cancel()
 
-	return func(ctx context.Context) error {
-		k := infra.ClusterFromContextOrDie(ctx)
-		uu, err := k.ParseResources(ctx, spec)
-		if err != nil {
-			return err
-		}
-
-		for _, u := range uu {
-			ctxd, cf := context.WithTimeout(ctx, 10*time.Second)
-			_, err = poll.DoR(ctxd, time.Second, func(ictx context.Context) (*unstructured.Unstructured, error) {
-				lctx, lcf := context.WithTimeout(ictx, 1*time.Minute)
-				defer lcf()
-
-				t := types.NamespacedName{Namespace: u.GetNamespace(), Name: u.GetName()}
-				lu := u.DeepCopy()
-				if err := k.Get(lctx, t, lu, &client.GetOptions{}); err != nil {
-					if kerrors.IsNotFound(err) {
-						return nil, nil
-					}
-				}
-				return nil, err
-			})
-			cf()
-
-			if err != nil {
-				ld, err := u.MarshalJSON()
-				if err != nil {
-					return fmt.Errorf(
-						"resource exists: [ ApiVersion=%s, Kind=%s, Namespace=%s, Name=%s ]. Error marshaling as json: %w",
-						u.GetAPIVersion(), u.GetKind(), u.GetNamespace(), u.GetName(), err)
-				}
-				return fmt.Errorf("resource exists: %s", ld)
-			}
-		}
-
-		return nil
-	}(lctx)
-}
-
-func ResourcesAreUpdated(ctx context.Context, spec string) error {
-	lctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-
-	k := infra.ClusterFromContextOrDie(lctx)
+	k := infra.ClusterFromContextOrDie(ctx)
 	uu, err := k.ParseResources(ctx, spec)
 	if err != nil {
 		return err
 	}
 
+	// TODO: use concurrency here
 	for _, u := range uu {
-		if err := k.Update(ctx, u.DeepCopy(), &client.UpdateOptions{}); err != nil {
+		lu, err := poll.DoRWithTimeout(ctx, time.Second, 20*time.Second, func(ctx context.Context) (*unstructured.Unstructured, error) {
+			t := types.NamespacedName{Namespace: u.GetNamespace(), Name: u.GetName()}
+			lu := u.DeepCopy()
+			if err := k.Get(ctx, t, lu, &client.GetOptions{}); err != nil {
+				if kerrors.IsNotFound(err) {
+					return nil, nil
+				}
+			}
+			return nil, err
+		})
+
+		if err != nil {
+			ld, err := lu.MarshalJSON()
+			if err != nil {
+				return fmt.Errorf(
+					"expected resource not to exists. Found: [ ApiVersion=%s, Kind=%s, Namespace=%s, Name=%s ]. Error marshaling as json: %w",
+					lu.GetAPIVersion(), lu.GetKind(), lu.GetNamespace(), lu.GetName(), err)
+			}
+			return fmt.Errorf("expected resource not to exists. Found: %s", ld)
+		}
+	}
+
+	return nil
+}
+
+func ResourcesAreUpdated(ctx context.Context, spec string) error {
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
+
+	k := infra.ClusterFromContextOrDie(ctx)
+	uu, err := k.ParseResources(ctx, spec)
+	if err != nil {
+		return err
+	}
+
+	// TODO: implement concurrency
+	for _, u := range uu {
+		// retry ~5 times
+		if err := poll.DoWithTimeout(ctx, 2*time.Second, 10*time.Second, func(ctx context.Context) error {
+			if err := k.Update(ctx, u.DeepCopy(), &client.UpdateOptions{}); err != nil {
+				return err
+			}
+			return nil
+		}); err != nil {
 			return err
 		}
 	}
@@ -114,10 +112,7 @@ func ResourcesAreUpdated(ctx context.Context, spec string) error {
 }
 
 func ResourcesAreCreated(ctx context.Context, spec string) error {
-	lctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-
-	return poll.Do(lctx, 5*time.Second, func(ctx context.Context) error {
+	return poll.DoWithTimeout(ctx, 5*time.Second, 1*time.Minute, func(ctx context.Context) error {
 		k := infra.ClusterFromContextOrDie(ctx)
 		uu, err := k.ParseResources(ctx, spec)
 		if err != nil {

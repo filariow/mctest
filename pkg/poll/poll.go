@@ -20,6 +20,22 @@ func Do(ctx context.Context, interval time.Duration, doFunc func(context.Context
 	return err
 }
 
+func DoWithTimeout(ctx context.Context, frequency, timeout time.Duration, doFunc func(context.Context) error) error {
+	df := func(ictx context.Context) (struct{}, error) {
+		return struct{}{}, doFunc(ictx)
+	}
+
+	_, err := DoRWithTimeout(ctx, frequency, timeout, df)
+	return err
+}
+
+func DoRWithTimeout[R any](ctx context.Context, frequency, timeout time.Duration, doFunc func(context.Context) (R, error)) (R, error) {
+	tctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	return DoR[R](tctx, frequency, doFunc)
+}
+
 func DoR[R any](ctx context.Context, interval time.Duration, doFunc func(context.Context) (R, error)) (R, error) {
 	errs := []error{}
 	cr, ce := DoRC[R](ctx, interval, doFunc)
