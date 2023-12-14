@@ -122,20 +122,20 @@ func ResourcesAreUpdated(ctx context.Context, spec string) error {
 }
 
 func ResourcesAreCreated(ctx context.Context, spec string) error {
-	return poll.DoWithTimeout(ctx, 5*time.Second, 1*time.Minute, func(ctx context.Context) error {
-		k := infra.ScenarioClusterFromContextOrDie(ctx)
-		uu, err := k.ParseResources(ctx, spec)
-		if err != nil {
+	k := infra.ScenarioClusterFromContextOrDie(ctx)
+	uu, err := k.ParseResources(ctx, spec)
+	if err != nil {
+		return err
+	}
+
+	for _, u := range uu {
+		if err := poll.DoWithTimeout(ctx, 5*time.Second, 1*time.Minute, func(ctx context.Context) error {
+			return k.Create(ctx, u.DeepCopy(), &client.CreateOptions{})
+		}); err != nil {
 			return err
 		}
-
-		for _, u := range uu {
-			if err := k.Create(ctx, u.DeepCopy(), &client.CreateOptions{}); err != nil {
-				return err
-			}
-		}
-		return nil
-	})
+	}
+	return nil
 }
 
 func ResourcesCanNotBeCreated(ctx context.Context, spec string) error {

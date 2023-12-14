@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"time"
 
 	"github.com/cucumber/godog"
 	corev1 "k8s.io/api/core/v1"
@@ -33,6 +34,9 @@ func unprovisionClusters(ctx context.Context, sc *godog.Scenario, err error) (co
 		return ctx, nil
 	}
 
+	lctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+
 	// fetch all provisioners and unprovision
 	pp, err := infra.ProvisionersFromContext(ctx)
 	if err != nil {
@@ -41,7 +45,7 @@ func unprovisionClusters(ctx context.Context, sc *godog.Scenario, err error) (co
 
 	errs := []error{}
 	for _, p := range pp {
-		if err := p.Unprovision(ctx); err != nil {
+		if err := p.Unprovision(lctx); err != nil {
 			errs = append(errs, err)
 		}
 	}
@@ -59,6 +63,9 @@ func destroyHostResources(ctx context.Context, sc *godog.Scenario, err error) (c
 		return ctx, nil
 	}
 
+	lctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+
 	// fetch management cluster from context
 	kh, err := infra.ManagementClusterFromContext(ctx)
 	if err != nil {
@@ -74,7 +81,7 @@ func destroyHostResources(ctx context.Context, sc *godog.Scenario, err error) (c
 
 	// list all namespaces related to current scenario
 	nn := corev1.NamespaceList{}
-	if errList := kh.List(ctx, &nn, &client.ListOptions{LabelSelector: s}); errList != nil {
+	if errList := kh.List(lctx, &nn, &client.ListOptions{LabelSelector: s}); errList != nil {
 		cerr := errors.Join(err, errList)
 		log.Printf("error listing namespaces before destroying: %s", cerr)
 		return ctx, cerr
@@ -83,7 +90,7 @@ func destroyHostResources(ctx context.Context, sc *godog.Scenario, err error) (c
 
 	// delete all namespaces related to current scenario
 	for _, n := range nn.Items {
-		if errDel := kh.Delete(ctx, &n, &client.DeleteOptions{}); errDel != nil {
+		if errDel := kh.Delete(lctx, &n, &client.DeleteOptions{}); errDel != nil {
 			cerr := errors.Join(err, errDel)
 			log.Printf("error destroying namespace %s in management cluster: %s", n.Name, cerr)
 			return ctx, cerr
