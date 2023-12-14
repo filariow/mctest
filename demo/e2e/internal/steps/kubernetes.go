@@ -17,7 +17,9 @@ import (
 func RegisterStepFuncsKubernetes(ctx *godog.ScenarioContext) {
 	ctx.Step(`^Resource is created:$`, ResourcesAreCreated)
 	ctx.Step(`^Resources are created:$`, ResourcesAreCreated)
+
 	ctx.Step(`^Resource can not be created:$`, ResourcesCanNotBeCreated)
+	ctx.Step(`^Resources can not be created:$`, ResourcesCanNotBeCreated)
 
 	ctx.Step(`^Resource is updated:$`, ResourcesAreUpdated)
 	ctx.Step(`^Resources are updated:$`, ResourcesAreUpdated)
