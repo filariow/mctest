@@ -40,5 +40,5 @@ func injectHookCleanup(ctx *godog.ScenarioContext) {
 	ctx.After(destroyHostResources)
 
 	// cleanup temp folder
-	ctx.After(hookDestroyScenarioTestFolder)
+	ctx.After(destroyScenarioTestFolder)
 }

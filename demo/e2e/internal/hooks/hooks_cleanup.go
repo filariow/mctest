@@ -100,7 +100,7 @@ func destroyHostResources(ctx context.Context, sc *godog.Scenario, err error) (c
 	return ctx, nil
 }
 
-func hookDestroyScenarioTestFolder(ctx context.Context, sc *godog.Scenario, err error) (context.Context, error) {
+func destroyScenarioTestFolder(ctx context.Context, sc *godog.Scenario, err error) (context.Context, error) {
 	// if test failed or any other error happened,
 	// do not delete the test folder to allow inspection
 	if err != nil {
