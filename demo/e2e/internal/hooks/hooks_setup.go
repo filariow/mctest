@@ -53,7 +53,7 @@ func injectProvisioners(ctx context.Context, s *godog.Scenario) (context.Context
 
 	scopedHostManifests := make([]unstructured.Unstructured, len(hmm))
 	for i, m := range hmm {
-		m.SetNamespace(*ns)
+		m.SetNamespace(ns)
 		scopedHostManifests[i] = m
 	}
 
@@ -126,11 +126,11 @@ func prepareDedicatedTestEnvironment(ctx context.Context, sc *godog.Scenario) (c
 		return ctx, econtext.ErrKeyNotFound
 	}
 
-	p, ok := (*hostProvisioners)[defaultClusterProvisioner]
+	p, ok := hostProvisioners[defaultClusterProvisioner]
 	if !ok {
 		return ctx, fmt.Errorf(
 			"host provisioner %s for scenario %s not found in registered ones: %v",
-			defaultClusterProvisioner, sc.Name, *hostProvisioners)
+			defaultClusterProvisioner, sc.Name, hostProvisioners)
 	}
 
 	// provision host cluster

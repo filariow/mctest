@@ -21,7 +21,7 @@ func TimeoutContextCancelIntoContext(ctx context.Context, value context.CancelFu
 	return econtext.IntoContext(ctx, keyTimeoutContextCancelFunc, value)
 }
 
-func TimeoutContextCancelFromContext(ctx context.Context) (*context.CancelFunc, error) {
+func TimeoutContextCancelFromContext(ctx context.Context) (context.CancelFunc, error) {
 	return econtext.FromContext[context.CancelFunc](ctx, keyTimeoutContextCancelFunc)
 }
 
@@ -34,7 +34,7 @@ func TestFolderIntoContext(ctx context.Context, value string) context.Context {
 	return econtext.IntoContext(ctx, keyTestFolder, value)
 }
 
-func TestFolderFromContext(ctx context.Context) (*string, error) {
+func TestFolderFromContext(ctx context.Context) (string, error) {
 	return econtext.FromContext[string](ctx, keyTestFolder)
 }
 

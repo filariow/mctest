@@ -22,7 +22,7 @@ func cancelRunContext(ctx context.Context, _ *godog.Scenario, err error) (contex
 	if err != nil {
 		return ctx, err
 	}
-	(*cancel)()
+	cancel()
 
 	return ctx, err
 }
@@ -40,7 +40,7 @@ func unprovisionClusters(ctx context.Context, sc *godog.Scenario, err error) (co
 	}
 
 	errs := []error{}
-	for _, p := range *pp {
+	for _, p := range pp {
 		if err := p.Unprovision(ctx); err != nil {
 			errs = append(errs, err)
 		}
@@ -109,7 +109,7 @@ func hookDestroyScenarioTestFolder(ctx context.Context, sc *godog.Scenario, err 
 	}
 
 	// delete test folder
-	if err := os.RemoveAll(*tf); err != nil {
+	if err := os.RemoveAll(tf); err != nil {
 		return ctx, fmt.Errorf("error cleaning up temp folder for test %s: %w", sc.Id, err)
 	}
 

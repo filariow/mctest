@@ -139,7 +139,7 @@ func (k *Kubernetes) DeployOperatorInNamespace(ctx context.Context, opPath strin
 	}
 
 	// read deployment manifests
-	opd := path.Join(*tf, "config", "default", opPath)
+	opd := path.Join(tf, "config", "default", opPath)
 	op, err := os.ReadFile(opd)
 	if err != nil {
 		return err
