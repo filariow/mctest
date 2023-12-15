@@ -195,12 +195,17 @@ func createAuxiliaryTestNamespace(ctx context.Context, cluster kube.Client, scen
 }
 
 func createNamespace(ctx context.Context, cluster kube.Client, prefix, scenarioId string) (*corev1.Namespace, error) {
-	name := fmt.Sprintf("%s-%s", prefix, scenarioId)
-	labels := map[string]string{
-		"scope":    "test",
-		"scenario": scenarioId,
+	ns := corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: fmt.Sprintf("%s-%s", prefix, scenarioId),
+			Labels: map[string]string{
+				"scope":    "test",
+				"scenario": scenarioId,
+			},
+		},
 	}
-	return cluster.CreateNamespaceWithLabels(ctx, name, labels)
+	err := cluster.Create(ctx, &ns, &client.CreateOptions{})
+	return &ns, err
 }
 
 func prepareNamespacedClient(ctx context.Context, k kube.Client, ns string) (kube.Client, error) {
