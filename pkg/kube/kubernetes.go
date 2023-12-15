@@ -3,7 +3,6 @@ package kube
 import (
 	"context"
 	"fmt"
-	"log"
 	"strings"
 
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
@@ -230,18 +229,15 @@ func (k *Kubernetes) WatchForEventOnResourceUnstructured(ctx context.Context, u 
 		}
 		defer w.Stop()
 
-		log.Printf("watching events on resource %s/%s", u.GetNamespace(), u.GetName())
 		// check for event to happen
 		for {
 			e, ok := <-w.ResultChan()
 			if !ok {
 				err := kerrors.NewNotFound(m.Resource.GroupResource(), u.GetName())
-				log.Printf("watch result chan is closed, returning not found: %v", err)
 				we <- err
 				return
 			}
 
-			log.Printf("received %v event on resource %s/%s: %v", e.Type, u.GetName(), u.GetNamespace(), u.Object)
 			ok, err := check(e)
 			if err != nil {
 				we <- err
