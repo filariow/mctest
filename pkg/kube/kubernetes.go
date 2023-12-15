@@ -80,8 +80,6 @@ func NewNamespaced(cfg *rest.Config, opts client.Options, namespace string) (*Na
 		},
 		Namespace: namespace,
 	}, nil
-
-	return nil, nil
 }
 
 func New(cfg *rest.Config, opts client.Options) (*Kubernetes, error) {
