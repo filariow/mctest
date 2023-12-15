@@ -5,9 +5,6 @@ import (
 	"fmt"
 	"strings"
 
-	corev1 "k8s.io/api/core/v1"
-	kerrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -148,20 +145,6 @@ func (k *Kubernetes) ParseResources(ctx context.Context, spec string) ([]unstruc
 }
 
 // steps
-
-func (k *Kubernetes) CreateNamespaceWithLabels(ctx context.Context, namespace string, labels map[string]string) (*corev1.Namespace, error) {
-	ns := corev1.Namespace{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:   namespace,
-			Labels: labels,
-		},
-	}
-	if err := k.Create(ctx, &ns, &client.CreateOptions{}); err != nil {
-		return nil, err
-	}
-	return &ns, nil
-}
-
 func (k *Kubernetes) WatchResourceUnstructured(ctx context.Context, u unstructured.Unstructured) (watch.Interface, error) {
 	fs, err := fields.ParseSelector(fmt.Sprintf("metadata.name=%s", u.GetName()))
 	if err != nil {
@@ -184,9 +167,6 @@ func (k *Kubernetes) WatchForEventOnResourceUnstructured(ctx context.Context, u 
 	// watch resource
 	w, err := k.WatchResourceUnstructured(ctx, u)
 	if err != nil {
-		if kerrors.IsNotFound(err) {
-			return nil
-		}
 		return err
 	}
 	defer w.Stop()
