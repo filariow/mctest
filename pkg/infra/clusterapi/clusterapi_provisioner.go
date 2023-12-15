@@ -184,7 +184,7 @@ func (p *ClusterAPIProvisioner) Unprovision(ctx context.Context) error {
 	// delete clusters before other to avoid deletion errors
 	tw := []unstructured.Unstructured{}
 	for _, c := range p.clusters {
-		err := p.Kubernetes.Delete(ctx, c.DeepCopy(), &client.DeleteOptions{})
+		err := p.Kubernetes.DeleteAndWait(ctx, c, &client.DeleteOptions{})
 		switch {
 		case err == nil:
 			tw = append(tw, c) // fill the list of ones to wait for deletion
@@ -196,21 +196,14 @@ func (p *ClusterAPIProvisioner) Unprovision(ctx context.Context) error {
 		}
 	}
 
-	// TODO: enhance this, if deleted right before watching it will wait indefinitely
-	// wait for clusters deletion
-	// IDEA: use channels
-	for _, c := range tw {
-		if err := p.Kubernetes.WaitForDeletionOfResourceUnstructured(ctx, c); !kerrors.IsNotFound(err) {
-			return err
-		}
-	}
-
+	log.Println("deleting ClusterAPI CRs")
 	// delete other resources
 	for _, u := range p.clusterDef {
 		if err := p.Kubernetes.Delete(ctx, u.DeepCopy(), &client.DeleteOptions{}); !kerrors.IsNotFound(err) {
 			return err
 		}
 	}
+	log.Println("deleted ClusterAPI CRs")
 	return nil
 }
 

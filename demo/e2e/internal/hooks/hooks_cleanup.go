@@ -34,9 +34,6 @@ func unprovisionClusters(ctx context.Context, sc *godog.Scenario, err error) (co
 		return ctx, nil
 	}
 
-	lctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-	defer cancel()
-
 	// fetch all provisioners and unprovision
 	pp, err := infra.ProvisionersFromContext(ctx)
 	if err != nil {
@@ -45,6 +42,9 @@ func unprovisionClusters(ctx context.Context, sc *godog.Scenario, err error) (co
 
 	errs := []error{}
 	for _, p := range pp {
+		lctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		defer cancel()
+
 		if err := p.Unprovision(lctx); err != nil {
 			errs = append(errs, err)
 		}
