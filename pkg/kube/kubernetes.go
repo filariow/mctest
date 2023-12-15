@@ -35,8 +35,7 @@ type Client interface {
 
 	DeleteAndWait(ctx context.Context, u unstructured.Unstructured, opts client.DeleteOption) error
 	ParseResources(ctx context.Context, spec string) ([]unstructured.Unstructured, error)
-	WaitForDeletionOfResourceUnstructured(ctx context.Context, u unstructured.Unstructured) error
-	WatchForEventOnResourceUnstructured(ctx context.Context, u unstructured.Unstructured, check func(e watch.Event) (bool, error)) error
+	WatchForEventOnResourceUnstructured(ctx context.Context, u unstructured.Unstructured, check func(e watch.Event) (bool, error)) (chan error, error)
 	// CreateNamespaceWithLabels(ctx context.Context, namespace string, labels map[string]string) (*corev1.Namespace, error)
 
 	Livez(ctx context.Context) ([]byte, error)
@@ -117,13 +116,13 @@ func (k *NamespacedKubernetes) ParseResources(ctx context.Context, spec string) 
 	return uu, nil
 }
 
-func (k *NamespacedKubernetes) WaitForDeletionOfResourceUnstructured(ctx context.Context, u unstructured.Unstructured) error {
+func (k *NamespacedKubernetes) DeleteAndWait(ctx context.Context, u unstructured.Unstructured, opts client.DeleteOption) error {
 	lu := u.DeepCopy()
 	lu.SetNamespace(k.Namespace)
-	return k.Kubernetes.WaitForDeletionOfResourceUnstructured(ctx, *lu)
+	return k.Kubernetes.DeleteAndWait(ctx, *lu, opts)
 }
 
-func (k *NamespacedKubernetes) WatchForEventOnResourceUnstructured(ctx context.Context, u unstructured.Unstructured, check func(e watch.Event) (bool, error)) error {
+func (k *NamespacedKubernetes) WatchForEventOnResourceUnstructured(ctx context.Context, u unstructured.Unstructured, check func(e watch.Event) (bool, error)) (chan error, error) {
 	lu := u.DeepCopy()
 	lu.SetNamespace(k.Namespace)
 	return k.Kubernetes.WatchForEventOnResourceUnstructured(ctx, *lu, check)
@@ -199,15 +198,12 @@ func (k *Kubernetes) DeleteAndWait(ctx context.Context, u unstructured.Unstructu
 		return err
 	}
 
-	we := make(chan error, 1)
-	go func() {
-		if err := k.WatchForEventOnResourceUnstructured(ctx, *r, func(e watch.Event) (bool, error) {
-			return e.Type == watch.Deleted, nil
-		}); err != nil {
-			we <- err
-		}
-		defer close(we)
-	}()
+	we, err := k.WatchForEventOnResourceUnstructured(ctx, *r, func(e watch.Event) (bool, error) {
+		return e.Type == watch.Deleted, nil
+	})
+	if err != nil {
+		return err
+	}
 
 	if err := k.Delete(ctx, r, opts); err != nil {
 		return err
@@ -216,46 +212,47 @@ func (k *Kubernetes) DeleteAndWait(ctx context.Context, u unstructured.Unstructu
 	return <-we
 }
 
-func (k *Kubernetes) WaitForDeletionOfResourceUnstructured(ctx context.Context, u unstructured.Unstructured) error {
-	return k.WatchForEventOnResourceUnstructured(ctx, u, func(e watch.Event) (bool, error) {
-		return e.Type == watch.Deleted, nil
-	})
-}
-
-func (k *Kubernetes) WatchForEventOnResourceUnstructured(ctx context.Context, u unstructured.Unstructured, check func(e watch.Event) (bool, error)) error {
+func (k *Kubernetes) WatchForEventOnResourceUnstructured(ctx context.Context, u unstructured.Unstructured, check func(e watch.Event) (bool, error)) (chan error, error) {
 	m, err := k.mapper.RESTMapping(u.GroupVersionKind().GroupKind(), u.GroupVersionKind().Version)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	// watch resource
-	w, err := k.WatchResourceUnstructured(ctx, u)
-	if err != nil {
-		return err
-	}
-	defer w.Stop()
+	we := make(chan error, 1)
+	go func() {
+		defer close(we)
 
-	log.Printf("watching events on resource %s/%s", u.GetNamespace(), u.GetName())
-
-	// check for event to happen
-	for {
-		e, ok := <-w.ResultChan()
-		if !ok {
-			err := kerrors.NewNotFound(m.Resource.GroupResource(), u.GetName())
-			log.Printf("watch result chan is closed, returning not found: %v", err)
-			return err
-		}
-
-		log.Printf("received %v event on resource %s/%s: %v", e.Type, u.GetName(), u.GetNamespace(), u.Object)
-		ok, err := check(e)
+		// watch resource
+		w, err := k.WatchResourceUnstructured(ctx, u)
 		if err != nil {
-			return err
+			we <- err
+			return
 		}
+		defer w.Stop()
 
-		if ok {
-			break
+		log.Printf("watching events on resource %s/%s", u.GetNamespace(), u.GetName())
+		// check for event to happen
+		for {
+			e, ok := <-w.ResultChan()
+			if !ok {
+				err := kerrors.NewNotFound(m.Resource.GroupResource(), u.GetName())
+				log.Printf("watch result chan is closed, returning not found: %v", err)
+				we <- err
+				return
+			}
+
+			log.Printf("received %v event on resource %s/%s: %v", e.Type, u.GetName(), u.GetNamespace(), u.Object)
+			ok, err := check(e)
+			if err != nil {
+				we <- err
+				return
+			}
+
+			if ok {
+				break
+			}
 		}
-	}
+	}()
 
-	return nil
+	return we, nil
 }

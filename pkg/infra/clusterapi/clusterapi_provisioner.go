@@ -135,7 +135,7 @@ func (p *ClusterAPIProvisioner) Provision(ctx context.Context) error {
 
 	// wait for cluster status to be ready
 	for _, u := range p.clusters {
-		if err := p.Kubernetes.WatchForEventOnResourceUnstructured(ctx, u, func(e watch.Event) (bool, error) {
+		we, err := p.Kubernetes.WatchForEventOnResourceUnstructured(ctx, u, func(e watch.Event) (bool, error) {
 			// convert to unstructured
 			m, err := runtime.DefaultUnstructuredConverter.ToUnstructured(e.Object)
 			if err != nil {
@@ -165,7 +165,11 @@ func (p *ClusterAPIProvisioner) Provision(ctx context.Context) error {
 			}
 
 			return ps == "Provisioned", nil
-		}); err != nil {
+		})
+		if err != nil {
+			return fmt.Errorf("error watching for cluster '%s/%s' status: %w", u.GetNamespace(), u.GetName(), err)
+		}
+		if err := <-we; err != nil {
 			return fmt.Errorf("error watching for cluster '%s/%s' status: %w", u.GetNamespace(), u.GetName(), err)
 		}
 	}
@@ -182,16 +186,8 @@ func (p *ClusterAPIProvisioner) NumClustersProvisionedInProvisionRound() int {
 // It will delete Clusters as firsts, the other CRs
 func (p *ClusterAPIProvisioner) Unprovision(ctx context.Context) error {
 	// delete clusters before other to avoid deletion errors
-	tw := []unstructured.Unstructured{}
 	for _, c := range p.clusters {
-		err := p.Kubernetes.DeleteAndWait(ctx, c, &client.DeleteOptions{})
-		switch {
-		case err == nil:
-			tw = append(tw, c) // fill the list of ones to wait for deletion
-			continue
-		case kerrors.IsNotFound(err):
-			continue
-		default:
+		if err := p.Kubernetes.DeleteAndWait(ctx, c, &client.DeleteOptions{}); err != nil && !kerrors.IsNotFound(err) {
 			return err
 		}
 	}
